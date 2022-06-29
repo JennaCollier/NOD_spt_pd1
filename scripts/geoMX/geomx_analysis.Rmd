@@ -1,0 +1,49 @@
+---
+title: "geomx_analysis"
+output: html_document
+date: '2022-06-29'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## GeoMX analysis
+
+```{r libraries}
+require(dplyr)
+require(useful)
+require(ggplot2)
+```
+
+Read in the data files. One data file contains the code-friendly protein names, description, and associated mouse genes. Two data files for CD45+ and INS+ regions of interest describing the normalized (using the GeoMX software) quantification of protein expression. The data for the CD45 and ins regions are merged.
+
+```{r Read in data}
+#read in CD45 data that has been normalized
+cd45 <- as_tibble(t(read_excel(file.path("data/geoMX/norm_geoMean_CD45_trimmed.xlsx"))))
+colnames(cd45) <- cd45[1,] #set column names manually (doesn't work in read_excel)
+cd45 <- cd45[-1,] #remove row with column names
+cd45[,13:82] <- log10(sapply(cd45[,13:82],as.numeric)) #set values as numeric
+
+#read in CD45 data that has been normalized
+ins <- as_tibble(t(read_excel(file.path("data/geoMX/norm_geoMean_INS_trimmed.xlsx"))))
+colnames(ins) <- ins[1,] #set column names manually (doesn't work in read_excel)
+ins <- ins[-1,] #remove row with column names
+ins[,13:82] <- log10(sapply(ins[,13:82],as.numeric)) #set values as numeric
+
+#merge data
+geomx <- rbind(cd45,ins)
+geomx
+geomx <- geomx[,-c(1:8)] #remove excess column information
+
+#read in gene annotations
+gene_annot <- read_excel(file.path("data/geoMX/gene_annotations.xlsx"), col_names = T)
+gene_annot
+```
+
+```{r PCA analysis}
+colnames(cd45)
+melted <- data.frame(geomx) %>% melt(id.vars = c("treatment","mouse_id","islet_score","label"))
+colnames(melted)[which(colnames(melted) == "variable")] <- "protein"
+
+```
