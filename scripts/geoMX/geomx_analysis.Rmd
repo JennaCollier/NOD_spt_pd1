@@ -1,22 +1,30 @@
 ---
 title: "geomx_analysis"
-output: html_document
+output: rmarkdown::github_document
 date: '2022-06-29'
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+
 ```
 
 ## GeoMX analysis
 
-```{r libraries}
-require(dplyr)
-require(useful)
-require(ggplot2)
+In this analysis, we looked at various proteins within beta islets of NOD mice age 16-22 weeks of age. The three treatment groups examined include healthy **isotype antibody-treated (IgG)**; **spontaneously diabetic (Spt)**; and **PD-1 blockade-treated diabetic (PD1)** mice. Both IgG and PD1 mice were treated with two doses of 200ug of antibody (anti-PD-1 clone 29F.1A12 or isotype IgG2a control) on days 0,2 before sacrifice on day 4. Pancreata were excised and immediately preserved in 10% formalin for 24h, stored in 70% ethanol, embedded in paraffin, and sectioned for H&E staining or staining with anti-INS or anti-CD45 antibodies. Both CD45 and INS staining was used to differentiate various regions within the islets. Islets were scored as healthy with no immune infiltrate (score 0), per-insulitis (score 1-2), or overt insulitis (score 3-4).
+
+```{r libraries, message = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(readxl, quietly = T) #reading excel spreadsheets
+require(ggprism, quietly = T) #adding p values to plots
+library(patchwork)
+library(magrittr)
 ```
 
-Read in the data files. One data file contains the code-friendly protein names, description, and associated mouse genes. Two data files for CD45+ and INS+ regions of interest describing the normalized (using the GeoMX software) quantification of protein expression. The data for the CD45 and ins regions are merged.
+Read in the data files. One data file contains the code-friendly protein names, description, and associated mouse genes. Two data files for CD45+ and INS+ regions of interest describing the normalized (using the GeoMX software) quantification of protein expression. The data for the CD45 and ins regions are merged, as they are already distinguished based on staining for CD45 and INS.
 
 ```{r Read in data}
 #read in CD45 data that has been normalized
@@ -33,17 +41,59 @@ ins[,13:82] <- log10(sapply(ins[,13:82],as.numeric)) #set values as numeric
 
 #merge data
 geomx <- rbind(cd45,ins)
-geomx
 geomx <- geomx[,-c(1:8)] #remove excess column information
+geomx
 
 #read in gene annotations
 gene_annot <- read_excel(file.path("data/geoMX/gene_annotations.xlsx"), col_names = T)
 gene_annot
 ```
 
-```{r PCA analysis}
+Tally the number of samples. Note that there is only one normal islet that was analyzed.
+```{r assessment of data}
+geomx %>% filter(label == "CD45") %>% group_by(treatment,islet_score) %>% tally() %>% cast(islet_score ~ treatment, value = "n", fill = 0)
+```
+
+Examine protein expression broadly across all of the samples to confirm that expression levels generally make sense:
+
+```{r protein expression, out.width="900px"}
+#melt data to long format for plotting
 colnames(cd45)
 melted <- data.frame(geomx) %>% melt(id.vars = c("treatment","mouse_id","islet_score","label"))
 colnames(melted)[which(colnames(melted) == "variable")] <- "protein"
+colnames(melted)[which(colnames(melted) == "value")] <- "log10_expression"
+head(melted)
 
+#set factor levels based on average expression
+melted$protein <- factor(melted$protein, levels = melted %>% 
+                           group_by(protein) %>% 
+                           summarize(avg = mean(log10_expression)) %>% 
+                           arrange(desc(avg)) %>% 
+                           pull(var = protein))
+
+#calculate the p values for plotting using t tests
+p_vals <- melted %>%
+  rstatix::group_by(protein) %>%
+  rstatix::t_test(log10_expression ~ label) %>%
+  rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
+  rstatix::add_significance(p.col = "p.adj") %>% 
+  rstatix::add_xy_position(x = "protein", dodge = 0.8) %>% # important for positioning!
+  filter(p.adj <= 0.05)
+
+#plot the data as violin plots
+melted %>% 
+  ggplot(aes(x=protein,y=log10_expression,color=label,fill=label)) + 
+  geom_violin(alpha=0.3,adjust=2,scale = "width",draw_quantiles = c(0.5),position = position_dodge(0.8)) + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  add_pvalue(p_vals, 
+             color = "black",
+               xmin = "xmin", 
+               xmax = "xmax",
+               label = "p.adj.signif",
+               tip.length = 0,
+             show.legend = F,
+             inherit.aes = F)
 ```
+
+Expression of CD45 and other lymphocyte-associated proteins (CD19, CD11c, F4/80, CD3e, etc) are higher in the CD45 regions which makes sense.
