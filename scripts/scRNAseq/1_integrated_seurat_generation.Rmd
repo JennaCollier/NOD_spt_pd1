@@ -1,0 +1,247 @@
+---
+title: "1_integrated_seurat_generation"
+output: rmarkdown::github_document
+date: '2022-07-08'
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+```
+
+```{r libraries, message = FALSE, warning = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(Seurat, quietly = T) #scRNA-seq analysis
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(rstatix, quietly = T) #adding p values to plots
+require(ggprism, quietly = T) #adding p values to plots
+require(patchwork, quietly = T) #adding p values to plots
+require(magrittr, quietly = T) #adding p values to plots
+require(gridExtra, quietly = T) #display multiple plots
+require(ggrepel, quietly = T) #labels for plots
+require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
+set.seed(1) #set a seed for reproducibility
+```
+
+## Initialize Seurat object
+
+Matrices, genes, barcodes, filtered TCR contig annotations, and consensus TCR annotations for each sample are within the data/ directory named as **TISSUE_TREATMENT**. Initiate the Seurat object by reading in each individual output from cellranger multi using a loop and subsequent merge. Loop through each sample in samples 1) storing Gene Expression (GEX) and feature-barcoding (FB) data; 2) creating list of seurat objects with GEX and FB assay data under the list name of each sample; 3) sample meta data (tissue: pancreas [pan], pancreatic lymph node [pLN], blood [bld] and antibody treatment [isotype: IgG or anti-PD-1: PD1] or spontaneously diabetic mice [Spt]).
+```{r initialize Seurat object}
+conditions <- list.files('data/') #all samples are within individual folders
+conditions
+
+data <- list() #list containing GEX and FB data
+seurat_objects <- list() #list containing all the Seurat objects
+
+for (condition in conditions) {
+  data[[condition]] <- Read10X(data.dir = paste0('data/',condition), strip.suffix = T)  #read 10X data
+  #create Seurat object with gex data
+  seurat_objects[[condition]] <- CreateSeuratObject(counts = data[[condition]][['Gene Expression']], 
+                                                    project = condition, min.cells = 50, min.features = 200) 
+  
+  #add FB assay data to object with columns for only the cells (colnames) in original GEX data
+  seurat_objects[[condition]][['FB']] <- CreateAssayObject(counts = 
+                                        data[[condition]][['Antibody Capture']][,colnames(seurat_objects[[condition]])])
+  
+  ##add tissue and treatment meta data to Seurat object
+  seurat_objects[[condition]]@meta.data$tissue <- strsplit(condition,"_")[[1]][1]
+  seurat_objects[[condition]]@meta.data$treatment <- paste(strsplit(condition,"_")[[1]][2])
+  seurat_objects[[condition]]@meta.data$pathology <- ifelse(seurat_objects[[condition]]@meta.data$treatment == "IgG", "non-diabetic", "diabetic")
+}
+
+# Merge all Seurat objects generating unique cell IDs
+seurat_object <- merge(x = seurat_objects[[conditions[1]]], 
+                       y = seurat_objects[2:length(seurat_objects)], 
+                       add.cell.ids = conditions)
+
+#rename and re-order some levels
+new_names <- c("bld" = "blood", "pLN" = "pLN", "pan" = "pancreas")
+seurat_object$tissue <- factor(paste(new_names[seurat_object$tissue]))
+levels(seurat_object$tissue) <- c("blood","pLN","pancreas")
+seurat_object$treatment <- factor(seurat_object$treatment, levels = c("IgG","Spt","PD1"))
+
+seurat_object
+```
+
+## Data integration by tissue
+
+Find anchors and integrate the data across the different tissues. Each tissue was run in a separate lane, but each treatment group was hashed within each lane, as differences between treatment groups are subtle, but are the most interesting. Differences between tissue groups are less interesting, so they were split into different lanes, which results in some batch effects. To reduce these batch effects, the Seurat is integrated by tissue. This step takes ~1 hour on a machine with 16gb of memory and 4 cores.
+```{r Seurat integration by tissue}
+split_seurat <- SplitObject(seurat_object, split.by = "tissue") # Split the seurat object for finding integration anchors
+
+# Normalize the split data by tissue and define variable features for each
+split_seurat <- lapply(X = split_seurat, FUN = function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+seurat_anchors <- FindIntegrationAnchors(object.list = split_seurat, dims = 1:20) # Define anchors and integrate data (warning: takes a long time)
+saveRDS(seurat_anchors, file='objects/combined_seurat_anchors.rds') # Save anchors just in case
+
+seurat_integrated <- IntegrateData(anchorset = seurat_anchors, dims = 1:20) # Integrate Seurat data using anchors
+DefaultAssay(seurat_integrated) <- "integrated"
+
+saveRDS(seurat_integrated, file='objects/combined_seurat_integrated.rds') # Save integrated Seurat object
+```
+
+## Feature barcoding and hashing data to de-identify individual mice
+
+The feature-barcoding (FB) data is normalized and the hashtag data is separated from the rest of the FB data. Demultiplexing of the cell hashtags is done to identify doublets and non-hashed cells that will be removed during the filtering steps. It also allows individual mice to be identified in the data. In this experiment, hashtags 1,2,3 used for PD1 and 2,3,4 were used for Spt and IgG samples. The hashing data is in the format of **Hash1-TotalSeqC**.
+```{r hashtag demux of Seurat}
+# Hashtags 1,2,3 used for PD1 and 2,3,4 used for Spt and IgG
+Idents(seurat_integrated) <- seurat_integrated$treatment
+hash123 <- subset(seurat_integrated, idents = "PD1")
+hash234 <- subset(seurat_integrated, idents = c("IgG","Spt"))
+
+# Separate the hashtag (HTO) data from other FB antibody counts. 4 hashtags were used in the following format: `Hash1-TotalSeqC`
+hash123@assays$HTO <- subset(hash123@assays$FB, features = paste0("Hashtag", 1:3, "-TotalSeqC"))
+hash123@assays$HTO@key <- "HTO_" # Change the key to preface the additional metadata columns with 'HTO_' instead of the default 'fb_' from the FB data
+hash234@assays$HTO <- subset(hash234@assays$FB, features = paste0("Hashtag", 2:4, "-TotalSeqC"))
+hash234@assays$HTO@key <- "HTO_"
+
+hash123 <- NormalizeData(hash123, assay = "HTO", normalization.method = "CLR")
+hash234 <- NormalizeData(hash234, assay = "HTO", normalization.method = "CLR")
+
+# Demultiplex the hashing data
+hash123 <- MULTIseqDemux(hash123, assay = "HTO", autoThresh = T)
+hash234 <- MULTIseqDemux(hash234, assay = "HTO", autoThresh = T)
+
+seurat_integrated <- merge(hash123,hash234)
+table(seurat_integrated$MULTI_classification)
+table(seurat_integrated$MULTI_ID)
+
+## Add mouse_id based on hashtag data but independent of hashtag # (as PD1 was hashtags 1-3 and Spt,IgG were hashtags 2-4)
+# Preview of naming scheme that names mice by treatment_replicate (eg: IgG_1, IgG_2, IgG_3, PD1_1, PD1_2, etc.)
+seurat_integrated@meta.data %>% 
+    group_by(treatment) %>% 
+    arrange(treatment,MULTI_ID) %>%
+    mutate(mouse_id = paste0(treatment,'_', 
+                              match(paste(treatment, MULTI_ID), unique(paste(treatment, MULTI_ID))))) %>% 
+    dplyr::select(treatment, MULTI_ID, mouse_id) %>% 
+    unique()
+
+# Generate the new metadata for the mouse_id while keeping the barcode
+new_metadata <- seurat_integrated@meta.data %>% 
+    rownames_to_column('barcode') %>%
+    group_by(treatment) %>% 
+    arrange(treatment, MULTI_ID) %>%
+    mutate(mouse_id = paste0(treatment,'_', 
+                              match(paste(treatment, MULTI_ID), unique(paste(treatment, MULTI_ID))))) %>% 
+    dplyr::select(treatment, MULTI_ID, mouse_id, barcode) %>%
+    column_to_rownames('barcode') %>%
+    dplyr::select(mouse_id)
+
+seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
+seurat_integrated$mouse_id <- factor(seurat_integrated$mouse_id, levels = c(paste0("IgG_",1:3),paste0("Spt_",1:3),paste0("PD1_",1:3)))
+```
+
+## T Cell Receptor (TCR) data
+
+The TCR data can now be added to the seurat metadata by looping through the file corresponding to each individual patient. The data generated is clonotype-centric and is derived from **consensus_annotations.csv** because the data from **filtered_contig_annotations** contains multiple consensus sequences. The barcodes must have the suffix added to match those in the seurat object. The TRA and TRB information must also be transformed from long to wide format. 
+
+For cells with multiple TCR assignments, select TCR by the highest number of UMIs first; then break ties by taking the TCR with the highest number of reads; then pick at random if both equal using dplyr::slice. Note that the raw_clonotype_id is added to the seurat object, but this must be re-calculated to consider all samples individually - this cannot be done by cellranger aggr as it does not consider feature-barcoding (hashtag) data that was used to distinguish individual mice: Clonotypes are PRIVATE to each individual mouse.
+```{r add TCR information}
+metadata <- data.frame() #initialize an empty dataframe for all of the tcr metadata combined
+
+for (i in 1:length(list.files(path = "data/"))) {
+  condition <- list.files(path = "data/")[i]
+  
+  tcrdata <- read.csv(paste0("data/", condition, "/filtered_contig_annotations.csv"), header = T)
+  tcrdata$barcode <- sapply(tcrdata$barcode, function(x) sub("-1", "", x), USE.NAMES = F) #remove suffix of -1 at the end of the barcode
+  tcrdata$barcode <- paste(condition, tcrdata$barcode, sep = "_") #add prefix
+  tcrdata <- tcrdata %>% dplyr::select(barcode, raw_clonotype_id) %>% unique()
+  head(tcrdata) #clonotype-centric dataframe
+  
+  clonotype_data <- read.csv(paste0("data/", condition, "/consensus_annotations.csv"), header = T)
+  
+  # Find the TCR beta chain for each cell
+  trb <- clonotype_data %>% filter(productive == "true", chain == "TRB") %>% 
+    group_by(clonotype_id) %>%  
+    arrange(desc(reads), desc(umis)) %>% 
+    top_n(1, umis) %>%  #select TCR by number of UMIs
+    top_n(1, reads) %>% #break ties by taking TCR with highest number of reads
+    dplyr::slice(1) %>% #pick top TCR at random if the above are equal using slice
+    dplyr::select(clonotype_id, v_gene, d_gene, j_gene, c_gene, cdr3, cdr3_nt) %>% # remove unnecessary columns
+    setNames(paste0("TRB.", names(.))) # append to each column name for TCR beta chain
+  colnames(trb)[1] <- "raw_clonotype_id"
+  
+  #do the same with TRA
+  tra <- clonotype_data %>% filter(productive == "true", chain == "TRA") %>% 
+    group_by(clonotype_id) %>%  
+    arrange(desc(reads), desc(umis)) %>% 
+    top_n(1, umis) %>%  #select TCR by number of UMIs
+    top_n(1, reads) %>% #break ties by taking TCR with highest number of reads
+    dplyr::slice(1) %>%
+    dplyr::select(clonotype_id, v_gene, d_gene, j_gene, c_gene, cdr3, cdr3_nt) %>%
+    setNames(paste0("TRA.", names(.))) #append to each column name for TCR alpha chain
+  colnames(tra)[1] <- "raw_clonotype_id"
+  
+  clonotype_data <- merge(tra, trb, by = "raw_clonotype_id") #merge the TCR alpha and beta chain data
+  tcrdata <- merge(tcrdata, clonotype_data, by = "raw_clonotype_id") #using the clono-centric dataframe, add the TCR consensus data
+  metadata <- rbind(metadata, tcrdata) #gather the TCR data for all the samples
+}
+
+metadata <- metadata %>% column_to_rownames("barcode") #add the merged dataframe to the Seurat object's metadata.
+seurat_integrated <- AddMetaData(object = seurat_integrated, metadata = metadata)
+
+#add metadata for whether a TCR was detected or not
+metadata <- seurat_integrated@meta.data %>% 
+              mutate(tcr_detected = ifelse(is.na(TRA.cdr3) & is.na(TRB.cdr3), FALSE, TRUE)) %>% 
+              dplyr::select(tcr_detected)
+seurat_integrated <- AddMetaData(object = seurat_integrated, metadata = metadata)
+
+seurat_integrated@meta.data %>% filter(!is.na(TRA.cdr3) & !is.na(TRB.cdr3)) %>% count() / seurat_integrated@meta.data %>% count() * 100
+```
+
+Set the **clonotype_id** based on unique TCR VDJ genes and CDR3 nucleotide sequences for the TCR-alpha and TCR-beta chains for each cell with consideration of individual mice: Clonotypes are not shared across animals, but may be shared across tissues. Clonotypes are enumerated based on descending number of cells, so clonotype1 is the largest clonally expanded clonotype. 
+
+Set the **tcrtype_id** based on the same TCR amino acid sequence only. There may be shared TCRs across animals and treatment groups. **tcrtype_convergence** is a measure of how many individual clonotypes converge into a single tcrtype.
+```{r clonotype and tcrtype metadata}
+## CLONOTYPE ID
+new_metadata <- seurat_integrated@meta.data %>% 
+  rownames_to_column('barcode') %>%
+  filter(!is.na(raw_clonotype_id)) %>%
+  group_by(mouse_id, TRB.v_gene, TRB.d_gene, TRB.j_gene, TRB.cdr3_nt ,TRA.v_gene, TRA.d_gene, TRA.j_gene, TRA.cdr3_nt) %>% 
+  mutate(clonotype_count = n()) %>% 
+  arrange(desc(clonotype_count)) %>% 
+  ungroup() %>% 
+  arrange(desc(clonotype_count)) %>% 
+  mutate(clonotype_id = paste0('clonotype', ... = match(paste(mouse_id, TRB.v_gene, TRB.d_gene, TRB.j_gene, TRB.cdr3_nt, TRA.v_gene, TRA.d_gene, TRA.j_gene, TRA.cdr3_nt), unique(paste(mouse_id, TRB.v_gene, TRB.d_gene, TRB.j_gene, TRB.cdr3_nt, TRA.v_gene, TRA.d_gene, TRA.j_gene, TRA.cdr3_nt))))) %>%
+  mutate(clonotype_count_bin = cut(clonotype_count, 
+                                   breaks=c(0,1,10,40,100,200,300), 
+                                   labels=c("1","2-9","10-39","40-99","100-199","200-300"))) %>%
+  column_to_rownames('barcode') %>%
+  select(clonotype_count, clonotype_id, clonotype_count_bin)
+seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
+
+## TCRTYPE ID
+new_metadata <- seurat_integrated@meta.data[!(is.na(seurat_integrated@meta.data$TRA.cdr3) & 
+                              is.na(seurat_integrated@meta.data$TRB.cdr3)),] %>% # excludes TRA.TCR==NA & TRB.TCR==NA
+    rownames_to_column('barcode') %>% 
+    add_count(TRA.cdr3, TRB.cdr3) %>% arrange(desc(n)) %>% # orders by identical groups with greatest number of cells
+    mutate(tcrtype_id = paste0('tcrtype', group_indices(., desc(n), TRA.cdr3, TRB.cdr3))) %>% # adds the new column according to number of cells in that tcrtype group (n)
+    add_count(tcrtype_id, name='tcrtype_count') %>%
+    mutate(tcrtype_count_bin = cut(tcrtype_count, 
+                                   breaks=c(0,1,10,40,100,200,300), 
+                                   labels=c("1","2-9","10-39","40-99","100-199","200-300"))) %>%
+    column_to_rownames('barcode') %>%
+    select(tcrtype_id, tcrtype_count, tcrtype_count_bin)
+seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
+
+## TCRTYPE CONVERGENCE
+obj_convergence <- seurat_integrated@meta.data %>% 
+                      select(tcrtype_id, clonotype_id) %>%
+                      unique() %>% arrange(tcrtype_id) %>%
+                      group_by(tcrtype_id) %>%
+                      count() %>%
+                      data.frame()
+obj_convergence <- setNames(as.numeric(obj_convergence$n), obj_convergence$tcrtype_id)
+new_metadata <- seurat_integrated@meta.data %>% 
+                    rownames_to_column('barcode') %>%
+                    mutate(tcrtype_convergence = obj_convergence[tcrtype_id]) %>%
+                    column_to_rownames('barcode') %>%
+                    select(tcrtype_convergence) 
+seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
+```
