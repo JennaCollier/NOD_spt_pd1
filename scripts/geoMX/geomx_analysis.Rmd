@@ -7,14 +7,13 @@ date: '2022-06-29'
 ```{r setup, include=FALSE, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
 knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
-
 ```
 
 ## GeoMX analysis
 
 In this analysis, we looked at various proteins within beta islets of NOD mice age 16-22 weeks of age. The three treatment groups examined include healthy **isotype antibody-treated (IgG)**; **spontaneously diabetic (Spt)**; and **PD-1 blockade-treated diabetic (PD1)** mice. Both IgG and PD1 mice were treated with two doses of 200ug of antibody (anti-PD-1 clone 29F.1A12 or isotype IgG2a control) on days 0,2 before sacrifice on day 4. Pancreata were excised and immediately preserved in 10% formalin for 24h, stored in 70% ethanol, embedded in paraffin, and sectioned for H&E staining or staining with anti-INS or anti-CD45 antibodies. Both CD45 and INS staining was used to differentiate various regions within the islets. Islets were scored as healthy with no immune infiltrate (score 0), per-insulitis (score 1-2), or overt insulitis (score 3-4).
 
-```{r libraries, message = FALSE}
+```{r libraries, message = FALSE, warning = FALSE}
 require(dplyr, quietly = T) #simple manipulation of data.frames
 require(reshape, quietly = T) #melting and casting data.frames
 require(ggplot2, quietly = T) #plotting
@@ -28,61 +27,66 @@ require(vegan , quietly = T) #principal component analysis
 require(nlme, quietly = T) #mixed linear model analysis
 require(ggrepel, quietly = T) #labels for pca plots
 require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
 ```
 
-```{r color palettes}
+```{r define color palettes}
 treatment_colors <- c("IgG" = "black", 
                       "Spt" = rgb(253,128,8, maxColorValue = 255), 
                       "PD1" = rgb(128,0,128, maxColorValue = 255))
+islet_score_colors <- c("Insulitis" = "darkred",
+                  "Peri.insulitis" = "royalblue3",
+                  "Normal" = "seagreen4")
 ```
 
 Read in the data files. One data file contains the code-friendly protein names, description, and associated mouse genes. Two data files for CD45+ and INS+ regions of interest describing the normalized (using the GeoMX software) quantification of protein expression. The data for the CD45 and ins regions are merged, as they are already distinguished based on staining for CD45 and INS.
 
-```{r Read in data}
+```{r read in data files}
 #read in CD45 data that has been normalized
 cd45 <- as_tibble(t(read_excel(file.path("data/geoMX/norm_geoMean_CD45_trimmed.xlsx"))))
 colnames(cd45) <- cd45[1,] #set column names manually (doesn't work in read_excel)
 cd45 <- cd45[-1,] #remove row with column names
-cd45$islet_score <- gsub("\\-", ".", cd45$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data
-colnames(cd45) <- gsub("\\-", ".", colnames(cd45)) #change dashes in protein colnames in data
+# cd45$islet_score <- gsub("\\-", ".", cd45$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data if not already
+# colnames(cd45) <- gsub("\\-", ".", colnames(cd45)) #change dashes in protein colnames in data if not already
 
 #read in CD45 data that has been normalized
 ins <- as_tibble(t(read_excel(file.path("data/geoMX/norm_geoMean_INS_trimmed.xlsx"))))
 colnames(ins) <- ins[1,] #set column names manually (doesn't work in read_excel)
 ins <- ins[-1,] #remove row with column names
-ins$islet_score <- gsub("\\-", ".", ins$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data
-colnames(ins) <- gsub("\\-", ".", colnames(ins)) #change dashes in protein colnames in data
+#ins$islet_score <- gsub("\\-", ".", ins$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data if not already
+#colnames(ins) <- gsub("\\-", ".", colnames(ins)) #change dashes in protein colnames in data if not already
 
-#merge data
+#merge the CD45 and INS data
 geomx <- rbind(cd45,ins)
-geomx <- geomx[,-c(1:8)] #remove excess column information
-head(geomx)
+colnames(geomx)
+geomx <- geomx[,c("scan_id","ROI",colnames(geomx)[26:99])] #remove excess columns
+corner(geomx)
 
-#read in gene annotations
+#read in gene annotations file that includes additional information for proteins detected
 gene_annot <- read_excel(file.path("data/geoMX/gene_annotations.xlsx"), col_names = T)
-gene_annot$protein <- gsub("\\-", ".", gene_annot$protein)
+#gene_annot$protein <- gsub("\\-", ".", gene_annot$protein) #change dashes in protein colnames in data if not already
 gene_annot$target_group <- gsub("All Targets;","",gene_annot$target_group) #remove extraneous text from description
 head(gene_annot)
 ```
 
-Tally the number of samples. Note that there is only one normal islet in the CD45 group that was analyzed.
-```{r assessment of data}
+Tally the number of samples to get an idea of what the data looks like. Note that there is only one normal islet in the CD45 group that was analyzed, so that will be removed before any statistical analyses as it doesn't make sense - normal islets should have no CD45+ infiltrate. Note that there aren't many samples for the PD1 treatment group.
+```{r exploration of sample numbers}
 geomx %>% group_by(treatment,islet_score,label) %>% tally() %>% cast(label+islet_score ~ treatment, value = "n", fill = 0)
+geomx <- geomx %>% filter(islet_score != "Normal" & label == "CD45" | label == "INS")
 ```
 
-Examine protein expression broadly across all of the samples to confirm that expression levels generally make sense:
+Examine protein expression broadly across all of the samples based on their region of classification (CD45+ or INS+ region) to confirm that expression levels generally make sense. CD45+ regions should have higher expression of immune-cell associated proteins (CD3e, CD45, CD8a, PD-1, etc.) compared to INS+ regions. Multiple t tests are used with a Benjamini & Hochberg "BH" correction.
 
-```{r protein expression by region of interest, out.width="900px"}
+```{r differences in protein expression by region classification (CD45/INS), out.width="900px"}
 #melt data to long format for plotting
 colnames(geomx)
-melted <- data.frame(geomx) %>% melt(id.vars = c("treatment","mouse_id","islet_score","label"))
+melted <- data.frame(geomx) %>% melt(id.vars = c("treatment","mouse","islet_score","label","scan_id","ROI"))
 colnames(melted)[which(colnames(melted) == "variable")] <- "protein"
 colnames(melted)[which(colnames(melted) == "value")] <- "expression"
 head(melted)
 
+#correct the class of some of the variables
 melted$expression <- as.numeric(melted$expression)
-melted$protein <- gsub("\\-", ".", melted$protein) #replace periods "." with dash "-" in protein names eg: PD.L1 to PD-L1
-#set factor levels based on average expression
 melted$protein <- factor(melted$protein, levels = melted %>% 
                            group_by(protein) %>% 
                            summarize(avg = mean(expression)) %>% 
@@ -91,7 +95,7 @@ melted$protein <- factor(melted$protein, levels = melted %>%
 melted$treatment <- factor(melted$treatment, levels = c("IgG","Spt","PD1"))
 melted$islet_score <- factor(melted$islet_score)
 
-melted <- merge(melted, gene_annot[,c("protein","info")], by = c("protein")) #add protein annotation info
+melted <- merge(melted, gene_annot[,c("protein","gene","code_class")], by = c("protein")) #add protein annotation info
 
 #calculate the p values for plotting using t tests
 p_vals <- melted %>%
@@ -99,19 +103,25 @@ p_vals <- melted %>%
   rstatix::t_test(expression ~ label) %>%
   rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
   rstatix::add_significance(p.col = "p.adj") %>% 
-  rstatix::add_xy_position(x = "protein", dodge = 0.8) %>% # important for positioning!
-  filter(p.adj <= 0.05)
+  rstatix::add_xy_position(x = "protein", dodge = 0.8) # important for positioning!
 p_vals$y.position <- log2(p_vals$y.position) #log2 transformed data will be plotted, so djust pvalue position
 
-#plot the data as violin plots
+#plot the expression data as violin plots grouped by region classification
 melted %>% 
-  ggplot(aes(x=protein, y=log2(expression), color=label, fill=label)) + 
-  geom_violin(alpha=0.3, adjust=2, scale = "width", draw_quantiles = c(0.5), position = position_dodge(0.8)) + 
+  ggplot(aes(x = protein, 
+             y = log2(expression), #log2 expression values are used
+             color = label, 
+             fill = label)) + 
+  geom_violin(alpha = 0.3, 
+              adjust = 2, 
+              scale = "width", 
+              draw_quantiles = c(0.5), #draw the median as a line
+              position = position_dodge(0.8)) + 
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
         axis.title.x = element_blank()) +
-  labs(title = "GeoMX protein expression") +
-  add_pvalue(p_vals, 
+  labs(title = "GeoMX protein expression: CD45+/INS+ regions") +
+  add_pvalue(p_vals %>% filter(p.adj < 0.05),  #only plot significant values
              color = "black",
                xmin = "xmin", 
                xmax = "xmax",
@@ -121,80 +131,100 @@ melted %>%
              inherit.aes = F)
 ```
 
-Expression of CD45 and other lymphocyte-associated proteins (CD19, CD11c, F4/80, CD3e, etc) are higher in the CD45 regions which would be expected. The controls look fairly consistent, so they can be removed to focus on the proteins of interest from the melted data frame.
-
-look at differences between islets with peri-insulitis and overt insulitis. The single normal islet was dropped for this analysis.
-```{r protein expression by islet score}
+Expression of CD45 and other lymphocyte-associated proteins (CD19, CD11c, F4/80, CD3e, etc) are higher in the CD45 regions as expected. Look at differences between islets with peri-insulitis and overt insulitis. Multiple t tests are used with a Benjamini & Hochberg "BH" correction.
+```{r differences in protein expression by islet score (Insulitis/Peri.Insulitis), out.width="900px"}
 p1_vals <- melted %>%
   filter(label == "CD45") %>%
-  filter(islet_score != "Normal") %>%
+  rstatix::group_by(protein) %>%
+  rstatix::t_test(expression ~ islet_score) %>%
+  rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
+  rstatix::add_significance(p.col = "p.adj") %>% 
+  rstatix::add_xy_position(x = "protein", dodge = 0.8) #important for positioning!
+p1_vals$y.position <- log2(p1_vals$y.position) #log2 transformed expression values are used, so this adjustment is needed
+p1_vals <- merge(p1_vals, gene_annot[,c("protein","code_class")], by = "protein")
+
+p1 <- melted %>%
+    filter(label == "CD45") %>%
+    ggplot(aes(x = protein, 
+               y = log2(expression), 
+               color = islet_score, 
+               fill = islet_score)) +
+    geom_violin(alpha=0.3, 
+                adjust=2, 
+                scale = "width", 
+                draw_quantiles = c(0.5), 
+                position = position_dodge(0.8)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, 
+                                     vjust = 0.5, 
+                                     hjust=1),
+          axis.title.x = element_blank()) +
+    scale_color_manual(values = islet_score_colors) +
+    scale_fill_manual(values = islet_score_colors) +
+    { if (sum(p1_vals$p.adj < 0.05) > 0) #check if there are any significant p values, otherwise, don't plot any NS
+      add_pvalue(p1_vals %>% filter(p.adj < 0.05),  #only plot significant values
+               color = "black",
+               xmin = "xmin",
+               xmax = "xmax",
+               label = "p.adj.signif",
+               tip.length = 0,
+               show.legend = F,
+               inherit.aes = F) } +
+    labs(title = "GeoMX protein expression (CD45+ regions)")
+
+
+p2_vals <- melted %>%
+  filter(label == "INS") %>%
   rstatix::group_by(protein) %>%
   rstatix::t_test(expression ~ islet_score) %>%
   rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
   rstatix::add_significance(p.col = "p.adj") %>% 
   rstatix::add_xy_position(x = "protein", dodge = 0.8) # important for positioning!
-p1_vals$y.position <- log2(p1_vals$y.position)
-p1_vals
+p2_vals$y.position <- log2(p2_vals$y.position) #log2 transformed expression values are used, so this adjustment is needed
+p2_vals <- merge(p2_vals, gene_annot[,c("protein","code_class")], by = "protein")
 
-# p1 <- melted %>%
-#     filter(label == "CD45") %>%
-#     filter(islet_score != "Normal") %>% 
-#     ggplot(aes(x=protein,y=log2(expression),color=islet_score,fill=islet_score)) + 
-#     geom_violin(alpha=0.3, adjust=2, scale = "width", draw_quantiles = c(0.5), position = position_dodge(0.8)) + 
-#     theme_minimal() + 
-#     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-#         axis.title.x = element_blank()) +
-#     labs(title = "GeoMX protein expression (CD45+ regions)") +
-#     add_pvalue(p1_vals, 
-#                color = "black",
-#                xmin = "xmin", 
-#                xmax = "xmax",
-#                label = "p.adj.signif",
-#                tip.length = 0,
-#                show.legend = F,
-#                inherit.aes = F)
+p2_vals %>% filter(p.adj < 0.05) %>% arrange(p.adj) %>% head(15) #show some of the top DE proteins
 
-p2_vals <- melted %>%
-  filter(label == "INS") %>%
-  filter(islet_score != "Normal") %>%
-  rstatix::group_by(protein) %>%
-  rstatix::t_test(expression ~ islet_score) %>%
-  rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
-  rstatix::add_significance(p.col = "p.adj") %>% 
-  rstatix::add_xy_position(x = "protein", dodge = 0.8) %>% # important for positioning!
-  filter(p.adj <= 0.05)
-p2_vals$y.position <- log2(p2_vals$y.position)
-p2_vals
+p2 <- melted %>%
+    filter(label == "INS") %>%
+    ggplot(aes(x = protein, 
+               y = log2(expression), 
+               color = islet_score, 
+               fill = islet_score)) +
+    geom_violin(alpha=0.3, 
+                adjust=2, 
+                scale = "width", 
+                draw_quantiles = c(0.5), 
+                position = position_dodge(0.8)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, 
+                                     vjust = 0.5, 
+                                     hjust=1),
+          axis.title.x = element_blank()) +
+    scale_color_manual(values = islet_score_colors) +
+    scale_fill_manual(values = islet_score_colors) +
+    { if (sum(p2_vals$p.adj < 0.05) > 0) #check if there are any significant p values, otherwise, don't plot any NS
+      add_pvalue(p2_vals %>% filter(p.adj < 0.05), #only plot significant values
+               color = "black",
+               xmin = "xmin",
+               xmax = "xmax",
+               label = "p.adj.signif",
+               tip.length = 0,
+               show.legend = F,
+               inherit.aes = F) } +
+    labs(title = "GeoMX protein expression (INS+ regions)")
 
-# p2 <- melted %>%
-#     filter(label == "INS") %>%
-#     filter(islet_score != "Normal") %>% 
-#     ggplot(aes(x=protein,y=log2(expression),color=islet_score,fill=islet_score)) + 
-#     geom_violin(alpha=0.3,adjust=2,scale = "width",draw_quantiles = c(0.5),position = position_dodge(0.8)) + 
-#     theme_minimal() + 
-#     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-#         axis.title.x = element_blank()) +
-#     labs(title = "GeoMX protein expression (INS+ regions)") +
-#     add_pvalue(p2_vals, 
-#                color = "black",
-#                xmin = "xmin", 
-#                xmax = "xmax",
-#                label = "p.adj.signif",
-#                tip.length = 0,
-#                show.legend = F,
-#                inherit.aes = F)
-# 
-# grid.arrange(p1, p2, nrow=2)
+grid.arrange(p1, p2, nrow=2)
 ```
 
-The two differences in CD45+ regions is that Granzyme B and Epcam is increased in peri-insulitis. This suggests that T cells are making more granzyme B in peri-insulitis lesions during initial destruction of the beta-islets than at later stages of destruction (perhaps they are becoming exhausted or dysfunctional as beta-islets become increasingly destroyed). Epcam is also increased - this is a gene involved in epithelial cell adhesions which suggests that the cell-to-cell adhesions are reduced as the beta-islet degrades.
+There are no significant differences between CD45+ regions within islets with insulitis vs. peri-insulitis. The only identified differences were between INS+ normal islets (in IgG mice) and those with peri-insulitis or insulitis. Most DE proteins in the INS+ regions are immune cell-associated (CD40, CD45, VISTA, CD11c) which indicates that there is some contamination of these regions with immune infiltrate. However, the immune cells in this region are likely to be associated with the "leading edge" of the infiltrate that are closest to the INS+ cells.
 
-```{r PCA analysis CD45}
-df_for_pca <- geomx %>% filter(label=="CD45")
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],as.numeric)
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],log2)
+```{r PCA analysis CD45 regions}
+df_for_pca <- geomx %>% filter(label == "CD45")
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], as.numeric)
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], log2)
 
-prin_comp <- rda(df_for_pca[,-c(1:4)])
+prin_comp <- rda(df_for_pca[,-c(1:6)])
 pca_scores <- scores(prin_comp)
 
 # Define shapes for plot
@@ -209,11 +239,15 @@ plot(pca_scores$sites[,1],
      xlim = c(-3,3),
      ylim = c(-3,3),
      cex=3)
-ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), conf=0.90, col = treatment_colors, lwd = 2)
+ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), 
+            conf=0.90, 
+            col = treatment_colors, 
+            lwd = 2)
 
 #keep data to later plot in ggplot
 df_all <- cbind(df_for_pca, pca_scores$sites)
-pca_weights <- data.frame(pca_scores$species, label = "CD45") %>% rownames_to_column("protein")
+pca_weights <- data.frame(pca_scores$species, label = "CD45") %>% 
+                          rownames_to_column("protein")
 
 #collect variance explained for each PC for labeling
 variance_explained_labels <- c(paste0("PC1 (", 
@@ -225,11 +259,11 @@ variance_explained_labels <- c(paste0("PC1 (",
 ```
 
 ```{r PCA analysis INS}
-df_for_pca <- geomx %>% filter(label=="INS")
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],as.numeric)
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],log2)
+df_for_pca <- geomx %>% filter(label == "INS")
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], as.numeric)
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], log2)
 
-prin_comp <- rda(df_for_pca[,-c(1:4)])
+prin_comp <- rda(df_for_pca[,-c(1:6)])
 pca_scores <- scores(prin_comp)
 
 # Define shapes for plot
@@ -243,12 +277,18 @@ plot(pca_scores$sites[,1],
      xlim = c(-4,3),
      ylim = c(-2,4),
      cex=3)
-ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), conf=0.90, col = treatment_colors, lwd = 2)
+ordiellipse(prin_comp, 
+            factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), 
+            conf=0.90, 
+            col = treatment_colors, 
+            lwd = 2)
 
 #gather data for PCA plot in ggplot
 df_for_pca <- cbind(df_for_pca, pca_scores$sites)
 df_all <- rbind(df_all, df_for_pca)
-pca_weights <- rbind(pca_weights, data.frame(pca_scores$species, label = "INS") %>% rownames_to_column("protein"))
+pca_weights <- rbind(pca_weights, 
+                     data.frame(pca_scores$species, label = "INS") %>% 
+                     rownames_to_column("protein"))
 
 #collect variance explained for each PC (as a percentage of 100, rounded to two decimals) for labeling axes in plots
 variance_explained_labels <- c(variance_explained_labels,
@@ -258,7 +298,7 @@ variance_explained_labels <- c(variance_explained_labels,
                                paste0("PC2 (", 
                                       round(summary(prin_comp)$cont$importance[2, "PC2"]*100, 2),
                                       "% of variance)"))
-names(variance_explained_labels) <- c("PC1_CD45","PC2_CD45","PC1_INS","PC2_INS")
+names(variance_explained_labels) <- c("PC1_CD45","PC2_CD45","PC1_INS","PC2_INS") #name the vector of axis titles
 ```
 
 These plots can be generated using ggplot2 which looks nicer and allows for increased customization. Both the PCA plots will be generated separately to allow for the axes to be labeled with the customized variance labels (rather than facetting the plots).
@@ -266,8 +306,13 @@ These plots can be generated using ggplot2 which looks nicer and allows for incr
 ```{r ggplot of PCA plots}
 pca_cd45 <- df_all %>%
     filter(label == "CD45") %>%
-    ggplot(aes(x = PC1, y= PC2, color = treatment, shape = islet_score, group = treatment)) +
-    geom_point(size = 4, alpha = 0.6) +
+    ggplot(aes(x = PC1, 
+               y= PC2, 
+               color = treatment, 
+               shape = islet_score, 
+               group = treatment)) +
+    geom_point(size = 4, 
+               alpha = 0.6) +
     stat_ellipse(level = 0.9) + #90% confidence intervals
     scale_color_manual(values = treatment_colors) +
     theme_minimal() +
@@ -282,8 +327,12 @@ pca_cd45 <- df_all %>%
     
 pca_ins <- df_all %>%
     filter(label == "INS") %>%
-    ggplot(aes(x = PC1, y= PC2, color = treatment, shape = islet_score, group = treatment)) +
-    geom_point(size = 4, alpha = 0.6) +
+    ggplot(aes(x = PC1, y= PC2, 
+               color = treatment, 
+               shape = islet_score, 
+               group = treatment)) +
+    geom_point(size = 4, 
+               alpha = 0.6) +
     stat_ellipse(level = 0.9) + #90% confidence intervals
     scale_color_manual(values = treatment_colors) +
     theme_minimal() +
@@ -301,9 +350,14 @@ grid.arrange(pca_cd45, pca_ins, nrow = 1, widths = c(1.5, 2))
 ```
 
 ```{r ggplot of PCA weights}
+proteins_of_interest <- c("LAG3","Perforin","GZMB","CTLA4","Ki.67","ICOS","CD127","IFNGR","Tim3","BAD","GITR","PD.1","Icos","BCLXL","Cleaved_Caspase3","CD4","CD8a","VISTA")
+
+pca_labels <- pca_weights %>% 
+  filter(protein %in% proteins_of_interest)
+
 weights_cd45 <- pca_weights %>%
     filter(label == "CD45") %>%
-    ggplot(aes(x = PC1, y= PC2)) +
+    ggplot(aes(x = PC1, y = PC2)) +
     facet_wrap(~ label, scales = "free") +
     scale_color_manual(values = treatment_colors) +
     theme_minimal() +
@@ -315,7 +369,7 @@ weights_cd45 <- pca_weights %>%
                  arrow = arrow(length = unit(4, "mm")),
                  color = "black",
                  alpha = 0.5) +
-    geom_text_repel(aes(label = protein), 
+    geom_text_repel(data = pca_labels %>% filter(label=="CD45"), aes(label = protein), 
                     color = "black",
                     max.overlaps = 4) +
     labs(x = variance_explained_labels["PC1_CD45"],
@@ -335,7 +389,7 @@ weights_ins <- pca_weights %>%
                  arrow = arrow(length = unit(4, "mm")),
                  color = "black",
                  alpha = 0.5) +
-    geom_text_repel(aes(label = protein), 
+    geom_text_repel(data = pca_labels %>% filter(label=="INS"), aes(label = protein), 
                     color = "black",
                     max.overlaps = 4) +
     labs(x = variance_explained_labels["PC1_INS"],
@@ -344,57 +398,40 @@ weights_ins <- pca_weights %>%
 grid.arrange(weights_cd45, weights_ins, nrow = 1)
 ```
 
-Next, the differences between treatment groups will be analyzed by generating volcano plots.
-**NOTE** need to fix this to use mixed linear models instead
+Next, the differences between treatment groups will be analyzed by generating volcano plots. Here is an example of the comparison between PD1 and Spt. There are no significant differences.
 
 ```{r Protein expression between treatment groups}
-avgs <- melted %>% 
-  group_by(treatment,islet_score,label,info,protein) %>% 
+meltednrml <- melted %>% filter(label == "CD45") %>% dplyr::select(-islet_score)
+meltednrml$treatment <- relevel(meltednrml$treatment, ref = "PD1")
+df <- data.frame()
+
+for (current_protein in as.character(unique(meltednrml$protein))) {
+  tmp <- meltednrml %>% 
+    filter(protein == current_protein)
+  tmp <- data.frame(summary(lme(expression ~ treatment, random = list(~1|mouse, ~1|scan_id), data = tmp))$tTable[-1,]) %>% 
+    rownames_to_column("comparison") %>% 
+    mutate(protein = current_protein, ref = "PD1", comparison = gsub("treatment", "", comparison))
+  df <- rbind(df, tmp)
+}
+
+avgs <- meltednrml %>% 
+  group_by(treatment,protein) %>% 
   summarize(avg = mean(expression), .groups = "keep")
 
-p_vals1 <- melted %>% filter(label == "CD45" & islet_score == "Peri.insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "CD45", islet_score = "Peri.insulitis")
-p_vals2 <- melted %>% filter(label == "INS" & islet_score == "Peri.insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "INS", islet_score = "Peri.insulitis")
-p_vals3 <- melted %>% filter(label == "CD45" & islet_score == "Insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "CD45", islet_score = "Insulitis")
-p_vals4 <- melted %>% filter(label == "INS" & islet_score == "Insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "INS", islet_score = "Insulitis")
+tbl <- merge(df, avgs %>% cast(protein~treatment,value = "avg"), by = c("protein"))
+tbl <- tbl %>% mutate(log2FC = ifelse(comparison == "Spt", log2(Spt/PD1), log2(IgG/PD1)))
+pd1_v_spt <- tbl %>% filter(comparison == "Spt")
+pd1_v_spt$p.adj <- p.adjust(pd1_v_spt$p.value, method = "BH")
 
-p_vals <- rbind(p_vals1,p_vals2,p_vals3,p_vals4)
-head(p_vals)
-
-avgs_tbl <- merge(avgs, p_vals[,c(1,9:13)], by=c("protein","islet_score","label"))
-avgs_tbl <- avgs_tbl %>% 
-    cast(protein+islet_score+label+comparison+p.adj+p.adj.signif~treatment,value="avg") %>%
-    mutate(log2FC = ifelse(comparison == "IgG_Spt", log2(Spt/IgG), ifelse(comparison == "IgG_PD1", log2(PD1/IgG), log2(PD1/Spt))))
-head(avgs_tbl)
-
-avgs_tbl %>%
+pd1_v_spt %>%
     ggplot(aes(x=log2FC,y=-log10(p.adj))) + 
     theme_minimal() + 
     theme(panel.grid = element_blank(),
           panel.border = element_rect(color="grey10", fill = NA)) +
-    facet_wrap(~label+islet_score+comparison) +
     geom_hline(yintercept = -log10(0.05), color = "grey90") + 
     geom_vline(xintercept = c(-0.5,0.5), color = "grey90") +
     geom_point() + 
-    geom_text_repel(data = subset(avgs_tbl, p.adj < 0.05 & abs(log2FC) > 0.5), aes(label=protein)) +
-    scale_x_continuous(limits = c(-4,4))
+    scale_x_continuous(limits = c(-3,3)) +
+    scale_y_continuous(limits = c(0,2)) +
+    geom_text_repel(data = subset(pd1_v_spt, p.adj < 0.5 & abs(log2FC) > 0.5), aes(label=protein))
 ```

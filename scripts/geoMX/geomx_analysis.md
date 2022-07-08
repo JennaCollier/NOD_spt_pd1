@@ -32,12 +32,16 @@ require(vegan , quietly = T) #principal component analysis
 require(nlme, quietly = T) #mixed linear model analysis
 require(ggrepel, quietly = T) #labels for pca plots
 require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
 ```
 
 ``` r
 treatment_colors <- c("IgG" = "black", 
                       "Spt" = rgb(253,128,8, maxColorValue = 255), 
                       "PD1" = rgb(128,0,128, maxColorValue = 255))
+islet_score_colors <- c("Insulitis" = "darkred",
+                  "Peri.insulitis" = "royalblue3",
+                  "Normal" = "seagreen4")
 ```
 
 Read in the data files. One data file contains the code-friendly protein
@@ -60,59 +64,158 @@ cd45 <- as_tibble(t(read_excel(file.path("data/geoMX/norm_geoMean_CD45_trimmed.x
 ``` r
 colnames(cd45) <- cd45[1,] #set column names manually (doesn't work in read_excel)
 cd45 <- cd45[-1,] #remove row with column names
-cd45$islet_score <- gsub("\\-", ".", cd45$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data
-colnames(cd45) <- gsub("\\-", ".", colnames(cd45)) #change dashes in protein colnames in data
+# cd45$islet_score <- gsub("\\-", ".", cd45$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data if not already
+# colnames(cd45) <- gsub("\\-", ".", colnames(cd45)) #change dashes in protein colnames in data if not already
 
 #read in CD45 data that has been normalized
 ins <- as_tibble(t(read_excel(file.path("data/geoMX/norm_geoMean_INS_trimmed.xlsx"))))
 colnames(ins) <- ins[1,] #set column names manually (doesn't work in read_excel)
 ins <- ins[-1,] #remove row with column names
-ins$islet_score <- gsub("\\-", ".", ins$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data
-colnames(ins) <- gsub("\\-", ".", colnames(ins)) #change dashes in protein colnames in data
+#ins$islet_score <- gsub("\\-", ".", ins$islet_score) #change dashes in Peri-insulitis to periods (Peri.insulitis) in data if not already
+#colnames(ins) <- gsub("\\-", ".", colnames(ins)) #change dashes in protein colnames in data if not already
 
-#merge data
+#merge the CD45 and INS data
 geomx <- rbind(cd45,ins)
-geomx <- geomx[,-c(1:8)] #remove excess column information
-head(geomx)
+colnames(geomx)
 ```
 
-    ## # A tibble: 6 x 74
-    ##   treatment mouse_id islet_score label PD.L1   CD45  Rb_IgG CTLA4 Rt_IgG2b GZMB 
-    ##   <chr>     <chr>    <chr>       <chr> <chr>   <chr> <chr>  <chr> <chr>    <chr>
-    ## 1 PD1       437      Insulitis   CD45  63.127~ 2433~ 175.1~ 87.9~ 16.3109~ 144.~
-    ## 2 Spt       535      Insulitis   CD45  140.98~ 1638~ 36.01~ 156.~ 6.93852~ 726.~
-    ## 3 Spt       669      Insulitis   CD45  105.76~ 1073~ 43.27~ 135.~ 2.62767~ 92.9~
-    ## 4 Spt       669      Insulitis   CD45  260.89~ 1806~ 162.8~ 229.~ 32.8831~ 193.~
-    ## 5 PD1       101      Insulitis   CD45  152.26~ 1099~ 35.58~ 146.~ 10.3706~ 896.~
-    ## 6 PD1       440      Insulitis   CD45  96.717~ 7766~ 49.04~ 114.~ 7.81749~ 131.~
-    ## # ... with 64 more variables: Histone.H3 <chr>, CD8a <chr>, CD19 <chr>,
-    ## #   CD3e <chr>, CD11c <chr>, F480 <chr>, SMA <chr>, CD4 <chr>, PanCk <chr>,
-    ## #   CD11b <chr>, GAPDH <chr>, Fibronectin <chr>, Ki.67 <chr>, PD.1 <chr>,
-    ## #   S6 <chr>, MHCII <chr>, Rt_IgG2a <chr>, VISTA <chr>, B7.H3 <chr>,
-    ## #   Tim.3 <chr>, OX40L <chr>, LAG3 <chr>, GITR <chr>, CD44 <chr>, CD86 <chr>,
-    ## #   CD40L <chr>, CD40 <chr>, CD27 <chr>, CD12 <chr>, ICOS <chr>, CD28 <chr>,
-    ## #   CD34 <chr>, `Ly6G&Ly6C` <chr>, FOXP3 <chr>, CD14 <chr>, CD163 <chr>, ...
+    ##  [1] "ROI"                                              
+    ##  [2] "ROI_label"                                        
+    ##  [3] "segment"                                          
+    ##  [4] "segment_label"                                    
+    ##  [5] "ROI_X_Coordinate"                                 
+    ##  [6] "ROI_Y_Coordinate"                                 
+    ##  [7] "segment_tags"                                     
+    ##  [8] "AOI"                                              
+    ##  [9] "AOI_surface_area"                                 
+    ## [10] "AOI_nuclei_count"                                 
+    ## [11] "fov_count"                                        
+    ## [12] "fov_counted"                                      
+    ## [13] "bindingDensity"                                   
+    ## [14] "scan_name"                                        
+    ## [15] "slide"                                            
+    ## [16] "scan_plexset"                                     
+    ## [17] "scan_id"                                          
+    ## [18] "roi_id"                                           
+    ## [19] "LOT_Mouse_Immune_Cell_Profiling_Protein_Core"     
+    ## [20] "LOT_Mouse_IO_Drug_Target_Protein_Module"          
+    ## [21] "LOT_Mouse_Immune_Activation_Status_Protein_Module"
+    ## [22] "LOT_Mouse_Immune_Cell_Typing_Protein_Module"      
+    ## [23] "LOT_Mouse_Pan_Tumor__Protein_Module"              
+    ## [24] "LOT_Mouse_nC_Cell_Death_Protein"                  
+    ## [25] "LOT_Mouse_nC_PI3K_AKT_Signaling_Protein"          
+    ## [26] "treatment"                                        
+    ## [27] "mouse"                                            
+    ## [28] "islet_score"                                      
+    ## [29] "label"                                            
+    ## [30] "PD.L1"                                            
+    ## [31] "CD45"                                             
+    ## [32] "Rb_IgG"                                           
+    ## [33] "CTLA4"                                            
+    ## [34] "Rt_IgG2b"                                         
+    ## [35] "GZMB"                                             
+    ## [36] "Histone.H3"                                       
+    ## [37] "CD8a"                                             
+    ## [38] "CD19"                                             
+    ## [39] "CD3e"                                             
+    ## [40] "CD11c"                                            
+    ## [41] "F480"                                             
+    ## [42] "SMA"                                              
+    ## [43] "CD4"                                              
+    ## [44] "PanCk"                                            
+    ## [45] "CD11b"                                            
+    ## [46] "GAPDH"                                            
+    ## [47] "Fibronectin"                                      
+    ## [48] "Ki.67"                                            
+    ## [49] "PD.1"                                             
+    ## [50] "S6"                                               
+    ## [51] "MHCII"                                            
+    ## [52] "Rt_IgG2a"                                         
+    ## [53] "VISTA"                                            
+    ## [54] "B7.H3"                                            
+    ## [55] "Tim3"                                             
+    ## [56] "OX40L"                                            
+    ## [57] "LAG3"                                             
+    ## [58] "GITR"                                             
+    ## [59] "CD44"                                             
+    ## [60] "CD86"                                             
+    ## [61] "CD40L"                                            
+    ## [62] "CD40"                                             
+    ## [63] "CD27"                                             
+    ## [64] "CD127"                                            
+    ## [65] "ICOS"                                             
+    ## [66] "CD28"                                             
+    ## [67] "CD34"                                             
+    ## [68] "Ly6G&Ly6C"                                        
+    ## [69] "FOXP3"                                            
+    ## [70] "CD14"                                             
+    ## [71] "CD163"                                            
+    ## [72] "CD31"                                             
+    ## [73] "BatF3"                                            
+    ## [74] "S100B"                                            
+    ## [75] "Epcam"                                            
+    ## [76] "ER"                                               
+    ## [77] "Pmel17"                                           
+    ## [78] "Her2"                                             
+    ## [79] "AR"                                               
+    ## [80] "AhR"                                              
+    ## [81] "IFNGR"                                            
+    ## [82] "GFP"                                              
+    ## [83] "BIM"                                              
+    ## [84] "p53"                                              
+    ## [85] "BCLXL"                                            
+    ## [86] "PARP"                                             
+    ## [87] "p21"                                              
+    ## [88] "Perforin"                                         
+    ## [89] "Cleaved_Caspase3"                                 
+    ## [90] "BAD"                                              
+    ## [91] "gamma.H2AX"                                       
+    ## [92] "pS6"                                              
+    ## [93] "pGSK3A"                                           
+    ## [94] "pPRAS40"                                          
+    ## [95] "pAMPK.alpha"                                      
+    ## [96] "pAKT1"                                            
+    ## [97] "Pan.AKT"                                          
+    ## [98] "PLCG1"                                            
+    ## [99] "MET"
 
 ``` r
-#read in gene annotations
+geomx <- geomx[,c("scan_id","ROI",colnames(geomx)[26:99])] #remove excess columns
+corner(geomx)
+```
+
+    ## # A tibble: 5 x 5
+    ##   scan_id     ROI                                  treatment mouse islet_score
+    ##   <chr>       <chr>                                <chr>     <chr> <chr>      
+    ## 1 437,669,535 194aaf9d-eb8a-4754-a0f8-08d6722f5200 PD1       437   Insulitis  
+    ## 2 437,669,535 00f36e18-66f6-4920-9dc9-7b058271765d Spt       535   Insulitis  
+    ## 3 437,669,535 5b6fff74-162f-4be9-8f74-c4b09dc6c71b Spt       669   Insulitis  
+    ## 4 437,669,535 4d2d541a-2f9c-49f8-8f14-ba8e0c48a16a Spt       669   Insulitis  
+    ## 5 101,440,647 b0a1b2ef-30a4-4d49-b1f6-0ad1434e693e PD1       101   Insulitis
+
+``` r
+#read in gene annotations file that includes additional information for proteins detected
 gene_annot <- read_excel(file.path("data/geoMX/gene_annotations.xlsx"), col_names = T)
-gene_annot$protein <- gsub("\\-", ".", gene_annot$protein)
+#gene_annot$protein <- gsub("\\-", ".", gene_annot$protein) #change dashes in protein colnames in data if not already
 gene_annot$target_group <- gsub("All Targets;","",gene_annot$target_group) #remove extraneous text from description
 head(gene_annot)
 ```
 
-    ## # A tibble: 6 x 6
-    ##   target_group                        info  code_class description protein gene 
-    ##   <chr>                               <chr> <chr>      <chr>       <chr>   <chr>
-    ## 1 Myeloid Activation;Checkpoint       chec~ Endogenous PD-L1       PD.L1   Cd274
-    ## 2 Total Immune                        immu~ Endogenous CD45        CD45    Cd45 
-    ## 3 Background                          cont~ Negative   Rb IgG      Rb_IgG  <NA> 
-    ## 4 T cell Activation;T cells;Th cells~ chec~ Endogenous CTLA4       CTLA4   Ctla4
-    ## 5 Background                          cont~ Negative   Rt IgG2b    Rt_IgG~ <NA> 
-    ## 6 T cell Activation;Cytotoxicity      T ce~ Endogenous GZMB        GZMB    Gzmb
+    ## # A tibble: 6 x 5
+    ##   target_group                              code_class description protein gene 
+    ##   <chr>                                     <chr>      <chr>       <chr>   <chr>
+    ## 1 Myeloid Activation;Checkpoint             Endogenous PD-L1       PD.L1   Cd274
+    ## 2 Total Immune                              Endogenous CD45        CD45    Cd45 
+    ## 3 Background                                Negative   Rb IgG      Rb_IgG  <NA> 
+    ## 4 T cell Activation;T cells;Th cells;Check~ Endogenous CTLA4       CTLA4   Ctla4
+    ## 5 Background                                Negative   Rt IgG2b    Rt_IgG~ <NA> 
+    ## 6 T cell Activation;Cytotoxicity            Endogenous GZMB        GZMB    Gzmb
 
-Tally the number of samples. Note that there is only one normal islet in
-the CD45 group that was analyzed.
+Tally the number of samples to get an idea of what the data looks like.
+Note that there is only one normal islet in the CD45 group that was
+analyzed, so that will be removed before any statistical analyses as it
+doesn’t make sense - normal islets should have no CD45+ infiltrate. Note
+that there aren’t many samples for the PD1 treatment group.
 
 ``` r
 geomx %>% group_by(treatment,islet_score,label) %>% tally() %>% cast(label+islet_score ~ treatment, value = "n", fill = 0)
@@ -124,55 +227,69 @@ geomx %>% group_by(treatment,islet_score,label) %>% tally() %>% cast(label+islet
     ## 3  CD45 Peri.insulitis  22   4   8
     ## 4   INS      Insulitis  16   0  10
     ## 5   INS         Normal   7   0   0
-    ## 6   INS Peri.insulitis  19   0   6
+    ## 6   INS Peri-insulitis  19   0   6
 
-Examine protein expression broadly across all of the samples to confirm
-that expression levels generally make sense:
+``` r
+geomx <- geomx %>% filter(islet_score != "Normal" & label == "CD45" | label == "INS")
+```
+
+Examine protein expression broadly across all of the samples based on
+their region of classification (CD45+ or INS+ region) to confirm that
+expression levels generally make sense. CD45+ regions should have higher
+expression of immune-cell associated proteins (CD3e, CD45, CD8a, PD-1,
+etc.) compared to INS+ regions. Multiple t tests are used with a
+Benjamini & Hochberg “BH” correction.
 
 ``` r
 #melt data to long format for plotting
 colnames(geomx)
 ```
 
-    ##  [1] "treatment"        "mouse_id"         "islet_score"      "label"           
-    ##  [5] "PD.L1"            "CD45"             "Rb_IgG"           "CTLA4"           
-    ##  [9] "Rt_IgG2b"         "GZMB"             "Histone.H3"       "CD8a"            
-    ## [13] "CD19"             "CD3e"             "CD11c"            "F480"            
-    ## [17] "SMA"              "CD4"              "PanCk"            "CD11b"           
-    ## [21] "GAPDH"            "Fibronectin"      "Ki.67"            "PD.1"            
-    ## [25] "S6"               "MHCII"            "Rt_IgG2a"         "VISTA"           
-    ## [29] "B7.H3"            "Tim.3"            "OX40L"            "LAG3"            
-    ## [33] "GITR"             "CD44"             "CD86"             "CD40L"           
-    ## [37] "CD40"             "CD27"             "CD12"             "ICOS"            
-    ## [41] "CD28"             "CD34"             "Ly6G&Ly6C"        "FOXP3"           
-    ## [45] "CD14"             "CD163"            "CD31"             "BatF3"           
-    ## [49] "S100B"            "Epcam"            "ER"               "Pmel17"          
-    ## [53] "Her2"             "AR"               "AhR"              "IFNGR"           
-    ## [57] "GFP"              "BIM"              "p53"              "BCLXL"           
-    ## [61] "PARP"             "p21"              "Perforin"         "Cleaved_Caspase3"
-    ## [65] "BAD"              "gamma.H2AX"       "pS6"              "pGSK3A"          
-    ## [69] "pPRAS40"          "pAMPK.alpha"      "pAKT1"            "Pan.AKT"         
-    ## [73] "PLCG1"            "MET"
+    ##  [1] "scan_id"          "ROI"              "treatment"        "mouse"           
+    ##  [5] "islet_score"      "label"            "PD.L1"            "CD45"            
+    ##  [9] "Rb_IgG"           "CTLA4"            "Rt_IgG2b"         "GZMB"            
+    ## [13] "Histone.H3"       "CD8a"             "CD19"             "CD3e"            
+    ## [17] "CD11c"            "F480"             "SMA"              "CD4"             
+    ## [21] "PanCk"            "CD11b"            "GAPDH"            "Fibronectin"     
+    ## [25] "Ki.67"            "PD.1"             "S6"               "MHCII"           
+    ## [29] "Rt_IgG2a"         "VISTA"            "B7.H3"            "Tim3"            
+    ## [33] "OX40L"            "LAG3"             "GITR"             "CD44"            
+    ## [37] "CD86"             "CD40L"            "CD40"             "CD27"            
+    ## [41] "CD127"            "ICOS"             "CD28"             "CD34"            
+    ## [45] "Ly6G&Ly6C"        "FOXP3"            "CD14"             "CD163"           
+    ## [49] "CD31"             "BatF3"            "S100B"            "Epcam"           
+    ## [53] "ER"               "Pmel17"           "Her2"             "AR"              
+    ## [57] "AhR"              "IFNGR"            "GFP"              "BIM"             
+    ## [61] "p53"              "BCLXL"            "PARP"             "p21"             
+    ## [65] "Perforin"         "Cleaved_Caspase3" "BAD"              "gamma.H2AX"      
+    ## [69] "pS6"              "pGSK3A"           "pPRAS40"          "pAMPK.alpha"     
+    ## [73] "pAKT1"            "Pan.AKT"          "PLCG1"            "MET"
 
 ``` r
-melted <- data.frame(geomx) %>% melt(id.vars = c("treatment","mouse_id","islet_score","label"))
+melted <- data.frame(geomx) %>% melt(id.vars = c("treatment","mouse","islet_score","label","scan_id","ROI"))
 colnames(melted)[which(colnames(melted) == "variable")] <- "protein"
 colnames(melted)[which(colnames(melted) == "value")] <- "expression"
 head(melted)
 ```
 
-    ##   treatment mouse_id islet_score label protein         expression
-    ## 1       PD1      437   Insulitis  CD45   PD.L1 63.127837555183959
-    ## 2       Spt      535   Insulitis  CD45   PD.L1 140.98315394086532
-    ## 3       Spt      669   Insulitis  CD45   PD.L1 105.76616280048388
-    ## 4       Spt      669   Insulitis  CD45   PD.L1 260.89662556491243
-    ## 5       PD1      101   Insulitis  CD45   PD.L1 152.26059349306291
-    ## 6       PD1      440   Insulitis  CD45   PD.L1 96.717817435207635
+    ##   treatment mouse islet_score label     scan_id
+    ## 1       PD1   437   Insulitis  CD45 437,669,535
+    ## 2       Spt   535   Insulitis  CD45 437,669,535
+    ## 3       Spt   669   Insulitis  CD45 437,669,535
+    ## 4       Spt   669   Insulitis  CD45 437,669,535
+    ## 5       PD1   101   Insulitis  CD45 101,440,647
+    ## 6       PD1   440   Insulitis  CD45 101,440,647
+    ##                                    ROI protein         expression
+    ## 1 194aaf9d-eb8a-4754-a0f8-08d6722f5200   PD.L1 63.127837555183959
+    ## 2 00f36e18-66f6-4920-9dc9-7b058271765d   PD.L1 140.98315394086532
+    ## 3 5b6fff74-162f-4be9-8f74-c4b09dc6c71b   PD.L1 105.76616280048388
+    ## 4 4d2d541a-2f9c-49f8-8f14-ba8e0c48a16a   PD.L1 260.89662556491243
+    ## 5 b0a1b2ef-30a4-4d49-b1f6-0ad1434e693e   PD.L1 152.26059349306291
+    ## 6 dd5988b6-8ed2-418d-87e1-8d3012d88cd0   PD.L1 96.717817435207635
 
 ``` r
+#correct the class of some of the variables
 melted$expression <- as.numeric(melted$expression)
-melted$protein <- gsub("\\-", ".", melted$protein) #replace periods "." with dash "-" in protein names eg: PD.L1 to PD-L1
-#set factor levels based on average expression
 melted$protein <- factor(melted$protein, levels = melted %>% 
                            group_by(protein) %>% 
                            summarize(avg = mean(expression)) %>% 
@@ -181,7 +298,7 @@ melted$protein <- factor(melted$protein, levels = melted %>%
 melted$treatment <- factor(melted$treatment, levels = c("IgG","Spt","PD1"))
 melted$islet_score <- factor(melted$islet_score)
 
-melted <- merge(melted, gene_annot[,c("protein","info")], by = c("protein")) #add protein annotation info
+melted <- merge(melted, gene_annot[,c("protein","gene","code_class")], by = c("protein")) #add protein annotation info
 
 #calculate the p values for plotting using t tests
 p_vals <- melted %>%
@@ -189,19 +306,25 @@ p_vals <- melted %>%
   rstatix::t_test(expression ~ label) %>%
   rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
   rstatix::add_significance(p.col = "p.adj") %>% 
-  rstatix::add_xy_position(x = "protein", dodge = 0.8) %>% # important for positioning!
-  filter(p.adj <= 0.05)
+  rstatix::add_xy_position(x = "protein", dodge = 0.8) # important for positioning!
 p_vals$y.position <- log2(p_vals$y.position) #log2 transformed data will be plotted, so djust pvalue position
 
-#plot the data as violin plots
+#plot the expression data as violin plots grouped by region classification
 melted %>% 
-  ggplot(aes(x=protein, y=log2(expression), color=label, fill=label)) + 
-  geom_violin(alpha=0.3, adjust=2, scale = "width", draw_quantiles = c(0.5), position = position_dodge(0.8)) + 
+  ggplot(aes(x = protein, 
+             y = log2(expression), #log2 expression values are used
+             color = label, 
+             fill = label)) + 
+  geom_violin(alpha = 0.3, 
+              adjust = 2, 
+              scale = "width", 
+              draw_quantiles = c(0.5), #draw the median as a line
+              position = position_dodge(0.8)) + 
   theme_minimal() + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
         axis.title.x = element_blank()) +
-  labs(title = "GeoMX protein expression") +
-  add_pvalue(p_vals, 
+  labs(title = "GeoMX protein expression: CD45+/INS+ regions") +
+  add_pvalue(p_vals %>% filter(p.adj < 0.05),  #only plot significant values
              color = "black",
                xmin = "xmin", 
                xmax = "xmax",
@@ -211,120 +334,167 @@ melted %>%
              inherit.aes = F)
 ```
 
-<img src="geomx_analysis_files/figure-gfm/protein expression by region of interest-1.png" width="900px" />
+<img src="geomx_analysis_files/figure-gfm/differences in protein expression by region classification (CD45/INS)-1.png" width="900px" />
 
 Expression of CD45 and other lymphocyte-associated proteins (CD19,
-CD11c, F4/80, CD3e, etc) are higher in the CD45 regions which would be
-expected. The controls look fairly consistent, so they can be removed to
-focus on the proteins of interest from the melted data frame.
-
-look at differences between islets with peri-insulitis and overt
-insulitis. The single normal islet was dropped for this analysis.
+CD11c, F4/80, CD3e, etc) are higher in the CD45 regions as expected.
+Look at differences between islets with peri-insulitis and overt
+insulitis. Multiple t tests are used with a Benjamini & Hochberg “BH”
+correction.
 
 ``` r
 p1_vals <- melted %>%
   filter(label == "CD45") %>%
-  filter(islet_score != "Normal") %>%
+  rstatix::group_by(protein) %>%
+  rstatix::t_test(expression ~ islet_score) %>%
+  rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
+  rstatix::add_significance(p.col = "p.adj") %>% 
+  rstatix::add_xy_position(x = "protein", dodge = 0.8) #important for positioning!
+p1_vals$y.position <- log2(p1_vals$y.position) #log2 transformed expression values are used, so this adjustment is needed
+p1_vals <- merge(p1_vals, gene_annot[,c("protein","code_class")], by = "protein")
+
+p1 <- melted %>%
+    filter(label == "CD45") %>%
+    ggplot(aes(x = protein, 
+               y = log2(expression), 
+               color = islet_score, 
+               fill = islet_score)) +
+    geom_violin(alpha=0.3, 
+                adjust=2, 
+                scale = "width", 
+                draw_quantiles = c(0.5), 
+                position = position_dodge(0.8)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, 
+                                     vjust = 0.5, 
+                                     hjust=1),
+          axis.title.x = element_blank()) +
+    scale_color_manual(values = islet_score_colors) +
+    scale_fill_manual(values = islet_score_colors) +
+    { if (sum(p1_vals$p.adj < 0.05) > 0) #check if there are any significant p values, otherwise, don't plot any NS
+      add_pvalue(p1_vals %>% filter(p.adj < 0.05),  #only plot significant values
+               color = "black",
+               xmin = "xmin",
+               xmax = "xmax",
+               label = "p.adj.signif",
+               tip.length = 0,
+               show.legend = F,
+               inherit.aes = F) } +
+    labs(title = "GeoMX protein expression (CD45+ regions)")
+
+
+p2_vals <- melted %>%
+  filter(label == "INS") %>%
   rstatix::group_by(protein) %>%
   rstatix::t_test(expression ~ islet_score) %>%
   rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
   rstatix::add_significance(p.col = "p.adj") %>% 
   rstatix::add_xy_position(x = "protein", dodge = 0.8) # important for positioning!
-p1_vals$y.position <- log2(p1_vals$y.position)
-p1_vals
+p2_vals$y.position <- log2(p2_vals$y.position) #log2 transformed expression values are used, so this adjustment is needed
+p2_vals <- merge(p2_vals, gene_annot[,c("protein","code_class")], by = "protein")
+
+p2_vals %>% filter(p.adj < 0.05) %>% arrange(p.adj) %>% head(15) #show some of the top DE proteins
 ```
 
-    ## # A tibble: 69 x 16
-    ##    protein    .y.        group1  group2    n1    n2 statistic    df      p p.adj
-    ##    <fct>      <chr>      <chr>   <chr>  <int> <int>     <dbl> <dbl>  <dbl> <dbl>
-    ##  1 S6         expression Insuli~ Peri.~    70    34   -2.76    56.1 0.0078 0.179
-    ##  2 Histone.H3 expression Insuli~ Peri.~    70    34   -0.0964  48.1 0.924  0.996
-    ##  3 CD45       expression Insuli~ Peri.~    70    34    2.14    80.0 0.0354 0.244
-    ##  4 SMA        expression Insuli~ Peri.~    70    34    1.66    80.9 0.0998 0.574
-    ##  5 Pan.AKT    expression Insuli~ Peri.~    70    34    0.847   67.9 0.4    0.852
-    ##  6 GAPDH      expression Insuli~ Peri.~    70    34    1.23    56.5 0.225  0.707
-    ##  7 IFNGR      expression Insuli~ Peri.~    70    34    0.614   61.3 0.542  0.92 
-    ##  8 BAD        expression Insuli~ Peri.~    70    34   -0.600   64.2 0.551  0.92 
-    ##  9 CD44       expression Insuli~ Peri.~    70    34   -0.445   80.2 0.657  0.940
-    ## 10 CD4        expression Insuli~ Peri.~    70    34    2.27    87.7 0.0255 0.220
-    ## # ... with 59 more rows, and 6 more variables: p.adj.signif <chr>,
-    ## #   y.position <dbl>, groups <named list>, x <dbl>, xmin <dbl>, xmax <dbl>
+    ##    protein        .y.    group1         group2 n1 n2 statistic       df
+    ## 1    GAPDH expression Insulitis         Normal 26  7  5.510810 25.82472
+    ## 2    IFNGR expression Insulitis         Normal 26  7  5.196953 29.47353
+    ## 3     CD40 expression Insulitis         Normal 26  7  4.116087 28.23845
+    ## 4     CD45 expression    Normal Peri-insulitis  7 25 -4.149129 29.96856
+    ## 5      p21 expression Insulitis         Normal 26  7  4.300210 26.21041
+    ## 6    VISTA expression Insulitis         Normal 26  7  4.038324 29.35055
+    ## 7    BCLXL expression Insulitis         Normal 26  7  3.982615 28.95669
+    ## 8    CD11c expression Insulitis         Normal 26  7  3.847352 28.88931
+    ## 9    IFNGR expression    Normal Peri-insulitis  7 25 -3.892207 29.96216
+    ## 10     MET expression Insulitis         Normal 26  7  3.857970 30.57686
+    ## 11     CD4 expression Insulitis         Normal 26  7  3.740306 29.18747
+    ## 12    CD8a expression Insulitis         Normal 26  7  3.801756 25.85006
+    ## 13     MET expression    Normal Peri-insulitis  7 25 -3.760412 28.53623
+    ## 14    CD3e expression Insulitis         Normal 26  7  3.583154 28.62778
+    ## 15    LAG3 expression Insulitis         Normal 26  7  3.644435 26.01626
+    ##           p      p.adj p.adj.signif y.position                 groups  x
+    ## 1  8.97e-06 0.00144900           **   11.52768      Insulitis, Normal  6
+    ## 2  1.40e-05 0.00144900           **   12.03331      Insulitis, Normal  7
+    ## 3  3.04e-04 0.01221300            *   10.89488      Insulitis, Normal 44
+    ## 4  2.53e-04 0.01221300            *   13.45210 Normal, Peri-insulitis  3
+    ## 5  2.10e-04 0.01221300            *   10.94884      Insulitis, Normal 53
+    ## 6  3.54e-04 0.01221300            *   10.89635      Insulitis, Normal 13
+    ## 7  4.20e-04 0.01242000            *   11.18571      Insulitis, Normal 20
+    ## 8  6.07e-04 0.01256490            *   11.04978      Insulitis, Normal 12
+    ## 9  5.14e-04 0.01256490            *   13.20345 Normal, Peri-insulitis  7
+    ## 10 5.50e-04 0.01256490            *   10.88190      Insulitis, Normal 40
+    ## 11 8.00e-04 0.01273846            *   10.94928      Insulitis, Normal 10
+    ## 12 7.88e-04 0.01273846            *   10.93289      Insulitis, Normal 14
+    ## 13 7.78e-04 0.01273846            *   12.79930 Normal, Peri-insulitis 40
+    ## 14 1.00e-03 0.01293750            *   10.93084      Insulitis, Normal 22
+    ## 15 1.00e-03 0.01293750            *   10.90278      Insulitis, Normal 24
+    ##         xmin      xmax code_class
+    ## 1   5.733333  6.000000    Control
+    ## 2   6.733333  7.000000 Endogenous
+    ## 3  43.733333 44.000000 Endogenous
+    ## 4   3.000000  3.266667 Endogenous
+    ## 5  52.733333 53.000000 Endogenous
+    ## 6  12.733333 13.000000 Endogenous
+    ## 7  19.733333 20.000000 Endogenous
+    ## 8  11.733333 12.000000 Endogenous
+    ## 9   7.000000  7.266667 Endogenous
+    ## 10 39.733333 40.000000 Endogenous
+    ## 11  9.733333 10.000000 Endogenous
+    ## 12 13.733333 14.000000 Endogenous
+    ## 13 40.000000 40.266667 Endogenous
+    ## 14 21.733333 22.000000 Endogenous
+    ## 15 23.733333 24.000000 Endogenous
 
 ``` r
-# p1 <- melted %>%
-#     filter(label == "CD45") %>%
-#     filter(islet_score != "Normal") %>% 
-#     ggplot(aes(x=protein,y=log2(expression),color=islet_score,fill=islet_score)) + 
-#     geom_violin(alpha=0.3, adjust=2, scale = "width", draw_quantiles = c(0.5), position = position_dodge(0.8)) + 
-#     theme_minimal() + 
-#     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-#         axis.title.x = element_blank()) +
-#     labs(title = "GeoMX protein expression (CD45+ regions)") +
-#     add_pvalue(p1_vals, 
-#                color = "black",
-#                xmin = "xmin", 
-#                xmax = "xmax",
-#                label = "p.adj.signif",
-#                tip.length = 0,
-#                show.legend = F,
-#                inherit.aes = F)
+p2 <- melted %>%
+    filter(label == "INS") %>%
+    ggplot(aes(x = protein, 
+               y = log2(expression), 
+               color = islet_score, 
+               fill = islet_score)) +
+    geom_violin(alpha=0.3, 
+                adjust=2, 
+                scale = "width", 
+                draw_quantiles = c(0.5), 
+                position = position_dodge(0.8)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, 
+                                     vjust = 0.5, 
+                                     hjust=1),
+          axis.title.x = element_blank()) +
+    scale_color_manual(values = islet_score_colors) +
+    scale_fill_manual(values = islet_score_colors) +
+    { if (sum(p2_vals$p.adj < 0.05) > 0) #check if there are any significant p values, otherwise, don't plot any NS
+      add_pvalue(p2_vals %>% filter(p.adj < 0.05), #only plot significant values
+               color = "black",
+               xmin = "xmin",
+               xmax = "xmax",
+               label = "p.adj.signif",
+               tip.length = 0,
+               show.legend = F,
+               inherit.aes = F) } +
+    labs(title = "GeoMX protein expression (INS+ regions)")
 
-p2_vals <- melted %>%
-  filter(label == "INS") %>%
-  filter(islet_score != "Normal") %>%
-  rstatix::group_by(protein) %>%
-  rstatix::t_test(expression ~ islet_score) %>%
-  rstatix::adjust_pvalue(p.col = "p", method = "BH") %>%
-  rstatix::add_significance(p.col = "p.adj") %>% 
-  rstatix::add_xy_position(x = "protein", dodge = 0.8) %>% # important for positioning!
-  filter(p.adj <= 0.05)
-p2_vals$y.position <- log2(p2_vals$y.position)
-p2_vals
+grid.arrange(p1, p2, nrow=2)
 ```
 
-    ## # A tibble: 0 x 16
-    ## # ... with 16 variables: protein <fct>, .y. <chr>, group1 <chr>, group2 <chr>,
-    ## #   n1 <int>, n2 <int>, statistic <dbl>, df <dbl>, p <dbl>, p.adj <dbl>,
-    ## #   p.adj.signif <chr>, y.position <dbl>, groups <named list>, x <dbl>,
-    ## #   xmin <dbl>, xmax <dbl>
+<img src="geomx_analysis_files/figure-gfm/differences in protein expression by islet score (Insulitis/Peri.Insulitis)-1.png" width="900px" />
+
+There are no significant differences between CD45+ regions within islets
+with insulitis vs. peri-insulitis. The only identified differences were
+between INS+ normal islets (in IgG mice) and those with peri-insulitis
+or insulitis. Most DE proteins in the INS+ regions are immune
+cell-associated (CD40, CD45, VISTA, CD11c) which indicates that there is
+some contamination of these regions with immune infiltrate. However, the
+immune cells in this region are likely to be associated with the
+“leading edge” of the infiltrate that are closest to the INS+ cells.
 
 ``` r
-# p2 <- melted %>%
-#     filter(label == "INS") %>%
-#     filter(islet_score != "Normal") %>% 
-#     ggplot(aes(x=protein,y=log2(expression),color=islet_score,fill=islet_score)) + 
-#     geom_violin(alpha=0.3,adjust=2,scale = "width",draw_quantiles = c(0.5),position = position_dodge(0.8)) + 
-#     theme_minimal() + 
-#     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-#         axis.title.x = element_blank()) +
-#     labs(title = "GeoMX protein expression (INS+ regions)") +
-#     add_pvalue(p2_vals, 
-#                color = "black",
-#                xmin = "xmin", 
-#                xmax = "xmax",
-#                label = "p.adj.signif",
-#                tip.length = 0,
-#                show.legend = F,
-#                inherit.aes = F)
-# 
-# grid.arrange(p1, p2, nrow=2)
-```
+df_for_pca <- geomx %>% filter(label == "CD45")
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], as.numeric)
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], log2)
 
-The two differences in CD45+ regions is that Granzyme B and Epcam is
-increased in peri-insulitis. This suggests that T cells are making more
-granzyme B in peri-insulitis lesions during initial destruction of the
-beta-islets than at later stages of destruction (perhaps they are
-becoming exhausted or dysfunctional as beta-islets become increasingly
-destroyed). Epcam is also increased - this is a gene involved in
-epithelial cell adhesions which suggests that the cell-to-cell adhesions
-are reduced as the beta-islet degrades.
-
-``` r
-df_for_pca <- geomx %>% filter(label=="CD45")
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],as.numeric)
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],log2)
-
-prin_comp <- rda(df_for_pca[,-c(1:4)])
+prin_comp <- rda(df_for_pca[,-c(1:6)])
 pca_scores <- scores(prin_comp)
 
 # Define shapes for plot
@@ -339,15 +509,19 @@ plot(pca_scores$sites[,1],
      xlim = c(-3,3),
      ylim = c(-3,3),
      cex=3)
-ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), conf=0.90, col = treatment_colors, lwd = 2)
+ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), 
+            conf=0.90, 
+            col = treatment_colors, 
+            lwd = 2)
 ```
 
-![](geomx_analysis_files/figure-gfm/PCA%20analysis%20CD45-1.png)<!-- -->
+![](geomx_analysis_files/figure-gfm/PCA%20analysis%20CD45%20regions-1.png)<!-- -->
 
 ``` r
 #keep data to later plot in ggplot
 df_all <- cbind(df_for_pca, pca_scores$sites)
-pca_weights <- data.frame(pca_scores$species, label = "CD45") %>% rownames_to_column("protein")
+pca_weights <- data.frame(pca_scores$species, label = "CD45") %>% 
+                          rownames_to_column("protein")
 
 #collect variance explained for each PC for labeling
 variance_explained_labels <- c(paste0("PC1 (", 
@@ -359,11 +533,11 @@ variance_explained_labels <- c(paste0("PC1 (",
 ```
 
 ``` r
-df_for_pca <- geomx %>% filter(label=="INS")
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],as.numeric)
-df_for_pca[,-c(1:4)] <- sapply(df_for_pca[,-c(1:4)],log2)
+df_for_pca <- geomx %>% filter(label == "INS")
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], as.numeric)
+df_for_pca[,-c(1:6)] <- sapply(df_for_pca[,-c(1:6)], log2)
 
-prin_comp <- rda(df_for_pca[,-c(1:4)])
+prin_comp <- rda(df_for_pca[,-c(1:6)])
 pca_scores <- scores(prin_comp)
 
 # Define shapes for plot
@@ -377,7 +551,11 @@ plot(pca_scores$sites[,1],
      xlim = c(-4,3),
      ylim = c(-2,4),
      cex=3)
-ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), conf=0.90, col = treatment_colors, lwd = 2)
+ordiellipse(prin_comp, 
+            factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), 
+            conf=0.90, 
+            col = treatment_colors, 
+            lwd = 2)
 ```
 
 ![](geomx_analysis_files/figure-gfm/PCA%20analysis%20INS-1.png)<!-- -->
@@ -386,7 +564,9 @@ ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1"
 #gather data for PCA plot in ggplot
 df_for_pca <- cbind(df_for_pca, pca_scores$sites)
 df_all <- rbind(df_all, df_for_pca)
-pca_weights <- rbind(pca_weights, data.frame(pca_scores$species, label = "INS") %>% rownames_to_column("protein"))
+pca_weights <- rbind(pca_weights, 
+                     data.frame(pca_scores$species, label = "INS") %>% 
+                     rownames_to_column("protein"))
 
 #collect variance explained for each PC (as a percentage of 100, rounded to two decimals) for labeling axes in plots
 variance_explained_labels <- c(variance_explained_labels,
@@ -396,7 +576,7 @@ variance_explained_labels <- c(variance_explained_labels,
                                paste0("PC2 (", 
                                       round(summary(prin_comp)$cont$importance[2, "PC2"]*100, 2),
                                       "% of variance)"))
-names(variance_explained_labels) <- c("PC1_CD45","PC2_CD45","PC1_INS","PC2_INS")
+names(variance_explained_labels) <- c("PC1_CD45","PC2_CD45","PC1_INS","PC2_INS") #name the vector of axis titles
 ```
 
 These plots can be generated using ggplot2 which looks nicer and allows
@@ -407,8 +587,13 @@ variance labels (rather than facetting the plots).
 ``` r
 pca_cd45 <- df_all %>%
     filter(label == "CD45") %>%
-    ggplot(aes(x = PC1, y= PC2, color = treatment, shape = islet_score, group = treatment)) +
-    geom_point(size = 4, alpha = 0.6) +
+    ggplot(aes(x = PC1, 
+               y= PC2, 
+               color = treatment, 
+               shape = islet_score, 
+               group = treatment)) +
+    geom_point(size = 4, 
+               alpha = 0.6) +
     stat_ellipse(level = 0.9) + #90% confidence intervals
     scale_color_manual(values = treatment_colors) +
     theme_minimal() +
@@ -423,8 +608,12 @@ pca_cd45 <- df_all %>%
     
 pca_ins <- df_all %>%
     filter(label == "INS") %>%
-    ggplot(aes(x = PC1, y= PC2, color = treatment, shape = islet_score, group = treatment)) +
-    geom_point(size = 4, alpha = 0.6) +
+    ggplot(aes(x = PC1, y= PC2, 
+               color = treatment, 
+               shape = islet_score, 
+               group = treatment)) +
+    geom_point(size = 4, 
+               alpha = 0.6) +
     stat_ellipse(level = 0.9) + #90% confidence intervals
     scale_color_manual(values = treatment_colors) +
     theme_minimal() +
@@ -444,9 +633,14 @@ grid.arrange(pca_cd45, pca_ins, nrow = 1, widths = c(1.5, 2))
 ![](geomx_analysis_files/figure-gfm/ggplot%20of%20PCA%20plots-1.png)<!-- -->
 
 ``` r
+proteins_of_interest <- c("LAG3","Perforin","GZMB","CTLA4","Ki.67","ICOS","CD127","IFNGR","Tim3","BAD","GITR","PD.1","Icos","BCLXL","Cleaved_Caspase3","CD4","CD8a","VISTA")
+
+pca_labels <- pca_weights %>% 
+  filter(protein %in% proteins_of_interest)
+
 weights_cd45 <- pca_weights %>%
     filter(label == "CD45") %>%
-    ggplot(aes(x = PC1, y= PC2)) +
+    ggplot(aes(x = PC1, y = PC2)) +
     facet_wrap(~ label, scales = "free") +
     scale_color_manual(values = treatment_colors) +
     theme_minimal() +
@@ -458,7 +652,7 @@ weights_cd45 <- pca_weights %>%
                  arrow = arrow(length = unit(4, "mm")),
                  color = "black",
                  alpha = 0.5) +
-    geom_text_repel(aes(label = protein), 
+    geom_text_repel(data = pca_labels %>% filter(label=="CD45"), aes(label = protein), 
                     color = "black",
                     max.overlaps = 4) +
     labs(x = variance_explained_labels["PC1_CD45"],
@@ -478,7 +672,7 @@ weights_ins <- pca_weights %>%
                  arrow = arrow(length = unit(4, "mm")),
                  color = "black",
                  alpha = 0.5) +
-    geom_text_repel(aes(label = protein), 
+    geom_text_repel(data = pca_labels %>% filter(label=="INS"), aes(label = protein), 
                     color = "black",
                     max.overlaps = 4) +
     labs(x = variance_explained_labels["PC1_INS"],
@@ -487,98 +681,52 @@ weights_ins <- pca_weights %>%
 grid.arrange(weights_cd45, weights_ins, nrow = 1)
 ```
 
-    ## Warning: ggrepel: 58 unlabeled data points (too many overlaps). Consider
-    ## increasing max.overlaps
-
-    ## Warning: ggrepel: 56 unlabeled data points (too many overlaps). Consider
+    ## Warning: ggrepel: 5 unlabeled data points (too many overlaps). Consider
     ## increasing max.overlaps
 
 ![](geomx_analysis_files/figure-gfm/ggplot%20of%20PCA%20weights-1.png)<!-- -->
 
 Next, the differences between treatment groups will be analyzed by
-generating volcano plots. **NOTE** need to fix this to use mixed linear
-models instead
+generating volcano plots. Here is an example of the comparison between
+PD1 and Spt. There are no significant differences.
 
 ``` r
-avgs <- melted %>% 
-  group_by(treatment,islet_score,label,info,protein) %>% 
+meltednrml <- melted %>% filter(label == "CD45") %>% dplyr::select(-islet_score)
+meltednrml$treatment <- relevel(meltednrml$treatment, ref = "PD1")
+df <- data.frame()
+
+for (current_protein in as.character(unique(meltednrml$protein))) {
+  tmp <- meltednrml %>% 
+    filter(protein == current_protein)
+  tmp <- data.frame(summary(lme(expression ~ treatment, random = list(~1|mouse, ~1|scan_id), data = tmp))$tTable[-1,]) %>% 
+    rownames_to_column("comparison") %>% 
+    mutate(protein = current_protein, ref = "PD1", comparison = gsub("treatment", "", comparison))
+  df <- rbind(df, tmp)
+}
+
+avgs <- meltednrml %>% 
+  group_by(treatment,protein) %>% 
   summarize(avg = mean(expression), .groups = "keep")
 
-p_vals1 <- melted %>% filter(label == "CD45" & islet_score == "Peri.insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "CD45", islet_score = "Peri.insulitis")
-p_vals2 <- melted %>% filter(label == "INS" & islet_score == "Peri.insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "INS", islet_score = "Peri.insulitis")
-p_vals3 <- melted %>% filter(label == "CD45" & islet_score == "Insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "CD45", islet_score = "Insulitis")
-p_vals4 <- melted %>% filter(label == "INS" & islet_score == "Insulitis") %>%
-    group_by(protein) %>% 
-    wilcox_test(expression~treatment) %>% 
-    adjust_pvalue() %>%
-    add_significance("p.adj") %>% 
-    mutate(comparison = paste0(group1,"_",group2), label = "INS", islet_score = "Insulitis")
+tbl <- merge(df, avgs %>% cast(protein~treatment,value = "avg"), by = c("protein"))
+tbl <- tbl %>% mutate(log2FC = ifelse(comparison == "Spt", log2(Spt/PD1), log2(IgG/PD1)))
+pd1_v_spt <- tbl %>% filter(comparison == "Spt")
+pd1_v_spt$p.adj <- p.adjust(pd1_v_spt$p.value, method = "BH")
 
-p_vals <- rbind(p_vals1,p_vals2,p_vals3,p_vals4)
-head(p_vals)
-```
-
-    ## # A tibble: 6 x 13
-    ##   protein  .y.   group1 group2    n1    n2 statistic       p  p.adj p.adj.signif
-    ##   <fct>    <chr> <chr>  <chr>  <int> <int>     <dbl>   <dbl>  <dbl> <chr>       
-    ## 1 S6       expr~ IgG    Spt       22     8        45 4.5 e-2 1      ns          
-    ## 2 S6       expr~ IgG    PD1       22     4        35 5.6 e-1 1      ns          
-    ## 3 S6       expr~ Spt    PD1        8     4        22 3.68e-1 1      ns          
-    ## 4 Histone~ expr~ IgG    Spt       22     8       164 8.82e-5 0.0183 *           
-    ## 5 Histone~ expr~ IgG    PD1       22     4        84 2   e-3 0.408  ns          
-    ## 6 Histone~ expr~ Spt    PD1        8     4        19 6.83e-1 1      ns          
-    ## # ... with 3 more variables: comparison <chr>, label <chr>, islet_score <chr>
-
-``` r
-avgs_tbl <- merge(avgs, p_vals[,c(1,9:13)], by=c("protein","islet_score","label"))
-avgs_tbl <- avgs_tbl %>% 
-    cast(protein+islet_score+label+comparison+p.adj+p.adj.signif~treatment,value="avg") %>%
-    mutate(log2FC = ifelse(comparison == "IgG_Spt", log2(Spt/IgG), ifelse(comparison == "IgG_PD1", log2(PD1/IgG), log2(PD1/Spt))))
-head(avgs_tbl)
-```
-
-    ##   protein    islet_score label comparison      p.adj p.adj.signif      IgG
-    ## 1      S6      Insulitis  CD45    IgG_PD1 1.00000000           ns 3557.392
-    ## 2      S6      Insulitis  CD45    IgG_Spt 0.00099086          *** 3557.392
-    ## 3      S6      Insulitis  CD45    Spt_PD1 1.00000000           ns 3557.392
-    ## 4      S6      Insulitis   INS    IgG_Spt 1.00000000           ns 5149.459
-    ## 5      S6 Peri.insulitis  CD45    IgG_PD1 1.00000000           ns 6260.097
-    ## 6      S6 Peri.insulitis  CD45    IgG_Spt 1.00000000           ns 6260.097
-    ##        Spt      PD1      log2FC
-    ## 1 7090.272 4791.471  0.42964862
-    ## 2 7090.272 4791.471  0.99502087
-    ## 3 7090.272 4791.471 -0.56537226
-    ## 4 4998.275       NA -0.04299055
-    ## 5 9755.671 6369.982  0.02510415
-    ## 6 9755.671 6369.982  0.64005608
-
-``` r
-avgs_tbl %>%
+pd1_v_spt %>%
     ggplot(aes(x=log2FC,y=-log10(p.adj))) + 
     theme_minimal() + 
     theme(panel.grid = element_blank(),
           panel.border = element_rect(color="grey10", fill = NA)) +
-    facet_wrap(~label+islet_score+comparison) +
     geom_hline(yintercept = -log10(0.05), color = "grey90") + 
     geom_vline(xintercept = c(-0.5,0.5), color = "grey90") +
     geom_point() + 
-    geom_text_repel(data = subset(avgs_tbl, p.adj < 0.05 & abs(log2FC) > 0.5), aes(label=protein)) +
-    scale_x_continuous(limits = c(-4,4))
+    scale_x_continuous(limits = c(-3,3)) +
+    scale_y_continuous(limits = c(0,2)) +
+    geom_text_repel(data = subset(pd1_v_spt, p.adj < 0.5 & abs(log2FC) > 0.5), aes(label=protein))
 ```
+
+    ## Warning: ggrepel: 42 unlabeled data points (too many overlaps). Consider
+    ## increasing max.overlaps
 
 ![](geomx_analysis_files/figure-gfm/Protein%20expression%20between%20treatment%20groups-1.png)<!-- -->
