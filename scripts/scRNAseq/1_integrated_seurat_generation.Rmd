@@ -412,19 +412,19 @@ new_cd4_clusters <- setNames(paste0("CD4_", 1:length(levels(Idents(test)))), sor
 cd4 <- RenameIdents(cd4, new_cd4_clusters)
 cd4 <- RenameIdents(cd4,
                     "CD4_1" = "Treg_Tigit_lo",
-                    "CD4_2" = "Tcon_Tcm",
-                    "CD4_3" = "Tcon_Tmem",
-                    "CD4_4" = "CD4_effmem",
-                    "CD4_5" = "CD4_eff_Cd200",
+                    "CD4_2" = "Tcon_cm",
+                    "CD4_3" = "Tcon_mem",
+                    "CD4_4" = "Tcon_effmem",
+                    "CD4_5" = "Tcon_eff_Cd200",
                     "CD4_6" = "Treg_Tigit_hi",
-                    "CD4_7" = "Activated",
-                    "CD4_8" = "Tfh",
+                    "CD4_7" = "Recently_activated",
+                    "CD4_8" = "Tcon_fh",
                     "CD4_9" = "Tcon_eff_Ifngr1",
-                    "CD4_10" = "Integrin",
+                    "CD4_10" = "Integrin_associated",
                     "CD4_11" = "Tcon_eff_Lgals1",
-                    "CD4_12" = "Acinar",
+                    "CD4_12" = "Acinar_contaminated",
                     "CD4_13" = "Tcon_eff_Cxcr6",
-                    "CD4_14" = "Interferon",
+                    "CD4_14" = "Interferon_sensing",
                     "CD4_15" = "Tcon_Gzma")
 
 #next re-clustering the CD8 using the standard workflow
@@ -460,13 +460,13 @@ cd8 <- RenameIdents(cd8,
                     "CD8_3" = "CD8_cm",
                     "CD8_4" = "CD8_eff",
                     "CD8_5" = "CD8_pexh",
-                    "CD8_6" = "Acinar",
+                    "CD8_6" = "Acinar_contaminated",
                     "CD8_7" = "CD8_texh",
-                    "CD8_8" = "Interferon",
+                    "CD8_8" = "Interferon_sensing",
                     "CD8_9" = "CD8_Tcm_gzmm",
                     "CD8_10" = "Proliferating",
-                    "CD8_11" = "Integrin",
-                    "CD8_12" = "Activated")
+                    "CD8_11" = "Integrin_associated",
+                    "CD8_12" = "Recently_activated")
 
 #re-project the newly defined clusters onto the UMAP containing all the cells
 new_metadata <- rbind(data.frame(seurat_clusters = Idents(cd4)), data.frame(seurat_clusters = Idents(cd8)))
@@ -476,6 +476,13 @@ Idents(seurat_integrated) <- seurat_integrated$seurat_clusters
 #fix some problems
 seurat_integrated <- subset(seurat_integrated, cells = seurat_integrated@meta.data %>% filter(seurat_clusters == "Tcon_Gzma"), invert = T) #remove a Tcon cluster that expresses Gzma - it is actually likely a CD8 cluster, as it clusters with those cells on the UMAP of all the cells
 seurat_integrated <- subset(seurat_integrated, cells = seurat_integrated@meta.data %>% filter(is.na(seurat_clusters)), invert = T) #remove some contaminating clusters
+
+#factor the Seurat clusters to order them by celltype (shared clusters are at the end)
+seurat_integrated$seurat_clusters <- factor(seurat_integrated$seurat_clusters, 
+                                            levels = c(levels(seurat_integrated$seurat_clusters)[grep("CD8", levels(seurat_integrated$seurat_clusters))], #first clusters are CD8
+                                                       levels(seurat_integrated$seurat_clusters)[grep("Tcon", levels(seurat_integrated$seurat_clusters))], #next clusters are Tcon
+                                                       levels(seurat_integrated$seurat_clusters)[grep("Treg", levels(seurat_integrated$seurat_clusters))], #next clusters are Treg
+                                                       levels(seurat_integrated$seurat_clusters)[-grep("CD8|Tcon|Treg", levels(seurat_integrated$seurat_clusters))])) #remaining clusters are shared
 Idents(seurat_integrated) <- seurat_integrated$seurat_clusters
 DimPlot(seurat_integrated, label = T) + theme(legend.position = "none")
 ```
