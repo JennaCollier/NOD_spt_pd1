@@ -1,0 +1,37 @@
+---
+title: "4_figure3_plots"
+output: rmarkdown::github_document
+date: '2022-07-10'
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+```
+
+```{r libraries, message = FALSE, warning = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(Seurat, quietly = T) #scRNA-seq analysis
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(rstatix, quietly = T) #adding p values to plots
+require(ggprism, quietly = T) #adding p values to plots
+require(ggsci, quirtly = T) #IGV color palette
+require(patchwork, quietly = T) #adding p values to plots
+require(magrittr, quietly = T) #adding p values to plots
+require(gridExtra, quietly = T) #display multiple plots
+require(ggrepel, quietly = T) #labels for plots
+require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
+require(viridis, quietly = T) #viridis color palettes
+require(readxl, quietly = T) #reading Excel files
+require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
+source("scripts/utils.R") #custom color palettes and other functions
+set.seed(1) #set a seed for reproducibility
+```
+
+```{r read in Seurats}
+seurat_integrated <- saveRDS("objects/seurat_integrated_clustered.rds")
+cd4 <- readRDS("objects/seurat_cd4_clustered.rds")
+cd8 <- readRDS("objects/seurat_cd8_clustered.rds")
+```
