@@ -14,10 +14,6 @@ require(dplyr, quietly = T) #simple manipulation of data.frames
 require(Seurat, quietly = T) #scRNA-seq analysis
 require(reshape, quietly = T) #melting and casting data.frames
 require(ggplot2, quietly = T) #plotting
-require(rstatix, quietly = T) #adding p values to plots
-require(ggprism, quietly = T) #adding p values to plots
-require(patchwork, quietly = T) #adding p values to plots
-require(magrittr, quietly = T) #adding p values to plots
 require(gridExtra, quietly = T) #display multiple plots
 require(ggrepel, quietly = T) #labels for plots
 require(tibble, quietly = T) #rownames_to_column function
@@ -546,63 +542,10 @@ cd8 <- AddMetaData(cd8, new_metadata)
 cd4 <- AddMetaData(cd4, new_metadata)
 ```
 
-For visualization, the T cells in the pancreas only will be clustered separately into distinct UMAPs:
-```{r cluster pancreas-only cells}
-Idents(seurat_integrated) <- seurat_integrated$tissue
-pan8 <- subset(seurat_integrated, idents = "pancreas")
-
-Idents(pan8) <- pan8$celltype
-pan4 <- subset(pan8, idents = c("Tcon","Treg"))
-pan8 <- subset(pan8, idents = "CD8")
-
-pan8 <- ScaleData(pan8, verbose = FALSE) #scale the RNA data
-pan8 <- RunPCA(pan8, npcs = 30, verbose = FALSE, features = rownames(x = pan8)) #run PCA
-pan8 <- RunUMAP(pan8, reduction = "pca", dims = 1:30)
-pan8 <- FindNeighbors(pan8, reduction = "pca", dims = 1:30)
-pan8 <- FindClusters(pan8, resolution = 1.1)
-
-pan4 <- ScaleData(pan4, verbose = FALSE) #scale the RNA data
-pan4 <- RunPCA(pan4, npcs = 30, verbose = FALSE, features = rownames(x = pan4)) #run PCA
-pan4 <- RunUMAP(pan4, reduction = "pca", dims = 1:30)
-pan4 <- FindNeighbors(pan4, reduction = "pca", dims = 1:30)
-pan4 <- FindClusters(pan4, resolution = 1.1)
-
-#add the Seurat clusters from clustering of all the T cells to the smaller UMAPs
-new_metadata <- seurat_integrated@meta.data %>% select(seurat_clusters)
-pan4 <- AddMetaData(pan4, new_metadata)
-pan8 <- AddMetaData(pan8, new_metadata)
-Idents(pan4) <- pan4$seurat_clusters
-Idents(pan8) <- pan8$seurat_clusters
-
-#visualize the results
-pan4_cluster <- DimPlot(pan4, reduction = "umap", label = TRUE, label.size = 5, split.by = "treatment") + theme(legend.position = "none")
-pan4_cluster
-pan8_cluster <- DimPlot(pan8, reduction = "umap", label = TRUE, label.size = 5, split.by = "treatment") + theme(legend.position = "none")
-pan8_cluster
-```
-
-Add the UMAP cell embeddings (UMAP positions) to the meta data for the Seurats to facilitate plotting in ggplot:
-```{r add cell embeddings to Seurat meta data}
-new_metadata <- as.data.frame(seurat_integrated@reductions$umap@cell.embeddings) #get the cell embeddings
-colnames(new_metadata) <- paste0("allcells_", colnames(new_metadata)) #prepend the UMAP coordinates with `allcells`
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-new_metadata <- as.data.frame(cd8@reductions$umap@cell.embeddings) #get the cell embeddings
-cd8 <- AddMetaData(cd8, new_metadata) #add to the meta data
-
-new_metadata <- as.data.frame(cd4@reductions$umap@cell.embeddings) #get the cell embeddings
-cd4 <- AddMetaData(cd4, new_metadata) #add to the meta data
-
-new_metadata <- as.data.frame(pan4@reductions$umap@cell.embeddings) #get the cell embeddings
-pan4 <- AddMetaData(pan4, new_metadata) #add to the meta data
-
-new_metadata <- as.data.frame(pan8@reductions$umap@cell.embeddings) #get the cell embeddings
-pan8 <- AddMetaData(pan8, new_metadata) #add to the meta data
-
+Finally, save the Seurat objects:
+```{r save seurat objects}
 #save the Seurats
 saveRDS(seurat_integrated, "objects/seurat_integrated_clustered.rds")
 saveRDS(cd4, "objects/seurat_cd4_clustered.rds")
 saveRDS(cd8, "objects/seurat_cd8_clustered.rds")
-saveRDS(pan4, "objects/seurat_cd4_panonly_clustered.rds")
-saveRDS(pan8, "objects/seurat_cd8_panonly_clustered.rds")
 ```
