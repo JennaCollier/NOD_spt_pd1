@@ -289,7 +289,7 @@ p_markers <- FeaturePlot(seurat_integrated, c("Cd4","Cd8a","Foxp3","Mki67"))
 p_cluster + p_markers
 
 #visually identify contaminating clusters based on gene expression and remove them - overclustering helps facilitate this
-contaminants <- c(63,56,42,71,84,81,77,68,44,62,17,20,79)
+contaminants <- c(63,56,42,71,84,81,77,68,44,62,17,20,79,37,51,66,76,82)
 seurat_integrated <- subset(seurat_integrated, idents = contaminants, invert = T)
 
 #choose CD8 T cell clusters based on the ratio of Cd8a/Cd4 average expression. The rest are CD4
@@ -363,28 +363,62 @@ seurat_markers <- FindAllMarkers(seurat_integrated, min.pct = 0.25, only.pos = T
 saveRDS(seurat_markers, "objects/integrated_seurat_FindAllMarkers.rds")
 
 #identify CD8 and CD4 T cells based on clusters
+#cluster 9, 15, 16 are split between CD4 and CD8 (proliferative, acinar-contaminated, and IFN-sensing, respectively)
 new_metadata <- seurat_integrated@meta.data %>% 
-                  mutate(new_celltype = ifelse(seurat_clusters %in% c(14,19), "unknown", 
-                                               ifelse(seurat_clusters %in% c(0,1,3,4,6,7,9,11,15), "CD4", 
-                                                      ifelse(seurat_clusters %in% c(2,5,8,10,16,18), "CD8", paste0(celltype))))) %>%
+                  mutate(new_celltype = ifelse(seurat_clusters %in% c(19), "unknown", 
+                                               ifelse(seurat_clusters %in% c(0,1,3,4,6,8,10,11,14,17), "CD4", 
+                                                      ifelse(seurat_clusters %in% c(2,5,7,12,13), "CD8", paste0(celltype))))) %>%
                   dplyr::select(new_celltype)
 colnames(new_metadata) <- "celltype"
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 
 #some cells classified as CD8 T cells are CD4 T cells based on expression of CD4 and lack of CD8, so fix this
-VlnPlot(seurat_integrated,"Cd4") + geom_hline(yintercept = 0.75) #0.75 is a good cutoff for Cd4
-VlnPlot(seurat_integrated,"Cd8a") + geom_hline(yintercept = 0.75) #0.75 is a good cutoff for Cd8
-new_metadata[WhichCells(seurat_integrated, expression = celltype == "CD4" & Cd8a > 0.75 & Cd4 <= 0.75),"celltype"] <- "CD8"
-new_metadata[WhichCells(seurat_integrated, expression = celltype == "CD8" & Cd4 > 0.75 & Cd8a <= 0.75),"celltype"] <- "CD4"
+#VlnPlot(seurat_integrated,"Cd4") + geom_hline(yintercept = 0.75) + #0.75 is a good cutoff for Cd4
+#VlnPlot(seurat_integrated,"Cd8a") + geom_hline(yintercept = 0.75) #0.75 is a good cutoff for Cd8
+new_metadata[WhichCells(seurat_integrated, expression = celltype == "CD4" & Cd8a > 1 & Cd4 <= 1),"celltype"] <- "CD8"
+new_metadata[WhichCells(seurat_integrated, expression = celltype == "CD8" & Cd4 > 1 & Cd8a <= 1),"celltype"] <- "CD4"
+new_metadata[WhichCells(seurat_integrated, expression = celltype == "CD8" & Foxp3 > 0.5),"celltype"] <- "CD4"
 
 #add the metadata where CD4 and CD8s are based on expression of Cd8a and Cd4
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 seurat_integrated <- subset(seurat_integrated, subset = celltype %in% c("CD4","CD8"))
+
+#re-plot with new celltype designations
+p_cluster <- DimPlot(seurat_integrated, reduction = "umap", label = TRUE, label.size = 5, split.by = "celltype") + theme(legend.position = "none")
+p_cluster
 ```
+
+
+Note that the clustering looks messy between CD4 and CD8 T cells with some cells in every cluster. This is okay, as the cells will be re-clustered as CD4 and CD8 T cells separately and these new clusters will be re-projected onto the UMAP containing both T cell types.
 
 Now that CD4s and CD8s have been distinguished, they will now be clustered separately into different UMAPs. This is both for visualization and also for better resolution of clusters of interest. These clusters, defined on the separate CD4 and CD8 UMAPS, will be "re-projected" back onto the UMAP containing all the cells. Some clusters will be shared (like an interferon-sensing cluster) while others will be unique to CD4 or CD8.
 ```{r re-cluster CD4 and CD8 separately}
 #start by re-clustering the CD4 using the standard workflow
+cd4 <- subset(seurat_integrated, subset = celltype == "CD4")
+cd4 <- ScaleData(cd4, verbose = FALSE) #scale the RNA data
+cd4 <- RunPCA(cd4, npcs = 30, verbose = FALSE, features = rownames(x = cd4)) #run PCA
+cd4 <- RunUMAP(cd4, reduction = "pca", dims = 1:30)
+cd4 <- FindNeighbors(cd4, reduction = "pca", dims = 1:30)
+cd4 <- FindClusters(cd4, resolution = 0.8)
+p4_cluster <- DimPlot(cd4, reduction = "umap", label = TRUE, label.size = 5, split.by = "celltype") + theme(legend.position = "none")
+p4_cluster
+
+new_metadata[WhichCells(cd4, idents = 12),"celltype"] <- "CD8" #these cells express Gzma but also CD4. Doublets?
+
+#next re-clustering the CD8 using the standard workflow
+cd8 <- subset(seurat_integrated, subset = celltype == "CD8")
+cd8 <- ScaleData(cd8, verbose = FALSE) #scale the RNA data
+cd8 <- RunPCA(cd8, npcs = 30, verbose = FALSE, features = rownames(x = cd8)) #run PCA
+cd8 <- RunUMAP(cd8, reduction = "pca", dims = 1:30)
+cd8 <- FindNeighbors(cd8, reduction = "pca", dims = 1:30)
+cd8 <- FindClusters(cd8, resolution = 1.1)
+p8_cluster <- DimPlot(cd8, reduction = "umap", label = TRUE, label.size = 5, split.by = "celltype") + theme(legend.position = "none")
+p8_cluster
+
+new_metadata[WhichCells(cd8, idents = 9),"celltype"] <- "CD4" #these cells express CD200 and look very similar to the large cluster in CD4
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata) #add the corrected celltypes and try again...
+
+#Re-cluster the CD4 using the standard workflow
 cd4 <- subset(seurat_integrated, subset = celltype == "CD4")
 cd4 <- ScaleData(cd4, verbose = FALSE) #scale the RNA data
 cd4 <- RunPCA(cd4, npcs = 30, verbose = FALSE, features = rownames(x = cd4)) #run PCA
@@ -401,31 +435,27 @@ cd4_markers <- FindAllMarkers(cd4, min.pct = 0.25, only.pos = T, logfc.threshold
                      group_by(cluster) %>%
                      arrange(desc(avg_log2FC), .by_group = T) %>%
                      top_n(n = 50, wt = avg_log2FC)
+saveRDS(cd4_markers, "objects/cd4_seurat_markers.rds")
 
-#merge clusters 10,1; 9,2; 8,0 based on similar expression of genes renaming the identities
-cd4 <- subset(cd4, idents = c(18,19), invert = T) #contaminating cells
-cd4 <- RenameIdents(cd4, 
-             "10"="1",
-             "9" = "2",
-             "8" = "0")
-new_cd4_clusters <- setNames(paste0("CD4_", 1:length(levels(Idents(test)))), sort(as.numeric(levels(Idents(test)))))
-cd4 <- RenameIdents(cd4, new_cd4_clusters)
+#merge clusters
 cd4 <- RenameIdents(cd4,
-                    "CD4_1" = "Treg_Tigit_lo",
-                    "CD4_2" = "Tcon_cm",
-                    "CD4_3" = "Tcon_mem",
-                    "CD4_4" = "Tcon_effmem",
-                    "CD4_5" = "Tcon_eff_Cd200",
-                    "CD4_6" = "Treg_Tigit_hi",
-                    "CD4_7" = "Recently_activated",
-                    "CD4_8" = "Tcon_fh",
-                    "CD4_9" = "Tcon_eff_Ifngr1",
-                    "CD4_10" = "Integrin_associated",
-                    "CD4_11" = "Tcon_eff_Lgals1",
-                    "CD4_12" = "Acinar_contaminated",
-                    "CD4_13" = "Tcon_eff_Cxcr6",
-                    "CD4_14" = "Interferon_sensing",
-                    "CD4_15" = "Tcon_Gzma")
+                    "0" = "Tcon_mem",
+                    "1" = "Treg_Tigit_lo",
+                    "2" = "Treg_Tigit_hi",
+                    "3" = "Tcon_cm",
+                    "4" = "Tcon_fh",
+                    "5" = "Tcon_effmem",
+                    "6" = "Recently_activated",
+                    "7" = "Tcon_cm",
+                    "8" = "Tcon_Nrn1",
+                    "9" = "Tcon_eff_Cxcr6",
+                    "10" = "Acinar_contaminated",
+                    "11" = "Interferon_sensing",
+                    "12" = "contaminant",
+                    "13" = "Tcon_fh",
+                    "14" = "Proliferating",
+                    "15" = "contaminant",
+                    "16" = "contaminant")
 
 #next re-clustering the CD8 using the standard workflow
 cd8 <- subset(seurat_integrated, subset = celltype == "CD8")
@@ -445,37 +475,32 @@ cd8_markers <- FindAllMarkers(cd8, min.pct = 0.25, only.pos = T, logfc.threshold
                      arrange(desc(avg_log2FC), .by_group = T) %>%
                      top_n(n = 50, wt = avg_log2FC)
 
-#merge clusters 2,9; 1,3,16; 13,4; 5,1
-cd8 <- RenameIdents(cd8, 
-             "9"="2",
-             "3"="1",
-             "16"="1",
-             "13"="4",
-             "5"="1")
-new_cd8_clusters <- setNames(paste0("CD8_", 1:length(levels(Idents(test)))), sort(as.numeric(levels(Idents(test)))))
-cd8 <- RenameIdents(cd8, new_cd8_clusters)
+#merge clusters
 cd8 <- RenameIdents(cd8,
-                    "CD8_1" = "CD8_mem",
-                    "CD8_2" = "CD8_slec",
-                    "CD8_3" = "CD8_cm",
-                    "CD8_4" = "CD8_eff",
-                    "CD8_5" = "CD8_pexh",
-                    "CD8_6" = "Acinar_contaminated",
-                    "CD8_7" = "CD8_texh",
-                    "CD8_8" = "Interferon_sensing",
-                    "CD8_9" = "CD8_Tcm_gzmm",
-                    "CD8_10" = "Proliferating",
-                    "CD8_11" = "Integrin_associated",
-                    "CD8_12" = "Recently_activated")
+                    "0" = "CD8_slec",
+                    "1" = "CD8_cm",
+                    "2" = "CD8_eff_Cxcr6",
+                    "3" = "CD8_slec",
+                    "4" = "CD8_texh",
+                    "5" = "CD8_mem",
+                    "6" = "CD8_pexh",
+                    "7" = "CD8_cm",
+                    "8" = "Acinar_contaminated",
+                    "9" = "contaminant",
+                    "10" = "CD8_slec",
+                    "11" = "CD8_cm_Gzmm",
+                    "12" = "contaminant",
+                    "13" = "Interferon_sensing",
+                    "14" = "CD8_effmem",                    
+                    "15" = "Recently_activated",                    
+                    "16" = "Proliferating",                    
+                    "17" = "CD8_slec")
 
 #re-project the newly defined clusters onto the UMAP containing all the cells
 new_metadata <- rbind(data.frame(seurat_clusters = Idents(cd4)), data.frame(seurat_clusters = Idents(cd8)))
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 Idents(seurat_integrated) <- seurat_integrated$seurat_clusters
-
-#fix some problems
-seurat_integrated <- subset(seurat_integrated, cells = seurat_integrated@meta.data %>% filter(seurat_clusters == "Tcon_Gzma"), invert = T) #remove a Tcon cluster that expresses Gzma - it is actually likely a CD8 cluster, as it clusters with those cells on the UMAP of all the cells
-seurat_integrated <- subset(seurat_integrated, cells = seurat_integrated@meta.data %>% filter(is.na(seurat_clusters)), invert = T) #remove some contaminating clusters
+seurat_integrated <- subset(seurat_integrated, idents = "contaminant", invert = T)
 
 #factor the Seurat clusters to order them by celltype (shared clusters are at the end)
 seurat_integrated$seurat_clusters <- factor(seurat_integrated$seurat_clusters, 
@@ -513,8 +538,8 @@ cd4 <- AddMetaData(cd4, new_metadata)
 
 Modify the celltype of the CD4+ T cells to distinguish Tcon and Treg based on the Seurat clusters for later analyses:
 ```{r distinguish Tcon and Treg}
-new_metadata <- cd4@meta.data %>% 
-                  mutate(celltype = ifelse(seurat_clusters %in% c("Treg_Tigit_lo","Treg_Tigit_hi"), "Treg", "Tcon")) %>% 
+new_metadata <- seurat_integrated@meta.data %>% 
+                  mutate(celltype = ifelse(seurat_clusters %in% c("Treg_Tigit_lo","Treg_Tigit_hi"), "Treg", paste0(celltype))) %>% 
                   select(celltype)
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 
