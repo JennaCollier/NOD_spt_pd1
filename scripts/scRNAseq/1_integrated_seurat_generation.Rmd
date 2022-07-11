@@ -360,8 +360,6 @@ seurat_markers <- FindAllMarkers(seurat_integrated, min.pct = 0.25, only.pos = T
                      arrange(desc(avg_log2FC), .by_group = T) %>%
                      top_n(n = 50, wt = avg_log2FC)
 
-saveRDS(seurat_markers, "objects/integrated_seurat_FindAllMarkers.rds")
-
 #identify CD8 and CD4 T cells based on clusters
 #cluster 9, 15, 16 are split between CD4 and CD8 (proliferative, acinar-contaminated, and IFN-sensing, respectively)
 new_metadata <- seurat_integrated@meta.data %>% 
@@ -548,6 +546,41 @@ cd8 <- AddMetaData(cd8, new_metadata)
 cd4 <- AddMetaData(cd4, new_metadata)
 ```
 
+For visualization, the T cells in the pancreas only will be clustered separately into distinct UMAPs:
+```{r cluster pancreas-only cells}
+Idents(seurat_integrated) <- seurat_integrated$tissue
+pan8 <- subset(seurat_integrated, idents = "pancreas")
+
+Idents(pan8) <- pan8$celltype
+pan4 <- subset(pan8, idents = c("Tcon","Treg"))
+pan8 <- subset(pan8, idents = "CD8")
+
+pan8 <- ScaleData(pan8, verbose = FALSE) #scale the RNA data
+pan8 <- RunPCA(pan8, npcs = 30, verbose = FALSE, features = rownames(x = pan8)) #run PCA
+pan8 <- RunUMAP(pan8, reduction = "pca", dims = 1:30)
+pan8 <- FindNeighbors(pan8, reduction = "pca", dims = 1:30)
+pan8 <- FindClusters(pan8, resolution = 1.1)
+
+pan4 <- ScaleData(pan4, verbose = FALSE) #scale the RNA data
+pan4 <- RunPCA(pan4, npcs = 30, verbose = FALSE, features = rownames(x = pan4)) #run PCA
+pan4 <- RunUMAP(pan4, reduction = "pca", dims = 1:30)
+pan4 <- FindNeighbors(pan4, reduction = "pca", dims = 1:30)
+pan4 <- FindClusters(pan4, resolution = 1.1)
+
+#add the Seurat clusters from clustering of all the T cells to the smaller UMAPs
+new_metadata <- seurat_integrated@meta.data %>% select(seurat_clusters)
+pan4 <- AddMetaData(pan4, new_metadata)
+pan8 <- AddMetaData(pan8, new_metadata)
+Idents(pan4) <- pan4$seurat_clusters
+Idents(pan8) <- pan8$seurat_clusters
+
+#visualize the results
+pan4_cluster <- DimPlot(pan4, reduction = "umap", label = TRUE, label.size = 5, split.by = "treatment") + theme(legend.position = "none")
+pan4_cluster
+pan8_cluster <- DimPlot(pan8, reduction = "umap", label = TRUE, label.size = 5, split.by = "treatment") + theme(legend.position = "none")
+pan8_cluster
+```
+
 Add the UMAP cell embeddings (UMAP positions) to the meta data for the Seurats to facilitate plotting in ggplot:
 ```{r add cell embeddings to Seurat meta data}
 new_metadata <- as.data.frame(seurat_integrated@reductions$umap@cell.embeddings) #get the cell embeddings
@@ -560,8 +593,16 @@ cd8 <- AddMetaData(cd8, new_metadata) #add to the meta data
 new_metadata <- as.data.frame(cd4@reductions$umap@cell.embeddings) #get the cell embeddings
 cd4 <- AddMetaData(cd4, new_metadata) #add to the meta data
 
+new_metadata <- as.data.frame(pan4@reductions$umap@cell.embeddings) #get the cell embeddings
+pan4 <- AddMetaData(pan4, new_metadata) #add to the meta data
+
+new_metadata <- as.data.frame(pan8@reductions$umap@cell.embeddings) #get the cell embeddings
+pan8 <- AddMetaData(pan8, new_metadata) #add to the meta data
+
 #save the Seurats
 saveRDS(seurat_integrated, "objects/seurat_integrated_clustered.rds")
 saveRDS(cd4, "objects/seurat_cd4_clustered.rds")
 saveRDS(cd8, "objects/seurat_cd8_clustered.rds")
+saveRDS(pan4, "objects/seurat_cd4_panonly_clustered.rds")
+saveRDS(pan8, "objects/seurat_cd8_panonly_clustered.rds")
 ```
