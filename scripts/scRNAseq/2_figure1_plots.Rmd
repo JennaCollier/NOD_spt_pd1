@@ -1,0 +1,71 @@
+---
+title: "2_figure1_plots"
+output: rmarkdown::github_document
+date: '2022-07-10'
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+```
+
+```{r libraries, message = FALSE, warning = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(Seurat, quietly = T) #scRNA-seq analysis
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(rstatix, quietly = T) #adding p values to plots
+require(ggprism, quietly = T) #adding p values to plots
+require(ggsci, quirtly = T) #IGV color palette
+require(patchwork, quietly = T) #adding p values to plots
+require(magrittr, quietly = T) #adding p values to plots
+require(gridExtra, quietly = T) #display multiple plots
+require(ggrepel, quietly = T) #labels for plots
+require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
+source("scripts/utils.R") #custom color palettes and other functions
+set.seed(1) #set a seed for reproducibility
+```
+
+```{r read in Seurats}
+seurat_integrated <- saveRDS("objects/seurat_integrated_clustered.rds")
+cd4 <- readRDS("objects/seurat_cd4_clustered.rds")
+cd8 <- readRDS("objects/seurat_cd8_clustered.rds")
+```
+
+First, all of the cells will be clustered:
+```{r Improved cluster UMAP}
+#define the centroids for labeling the clusters
+integrated_cls <- seurat_integrated@meta.data %>% 
+        dplyr::select(allcells_UMAP_1, allcells_UMAP_2, seurat_clusters) %>% 
+        group_by(seurat_clusters) %>% 
+        summarise(U1=mean(allcells_UMAP_1),U2=mean(allcells_UMAP_2)) %>% 
+        data.frame()
+
+p_cluster <- seurat_integrated@meta.data %>% 
+              ggplot(aes(x = allcells_UMAP_1, 
+                       y = allcells_UMAP_2, 
+                       color = seurat_clusters)) + 
+              geom_point(shape = 16, alpha = 0.3) +
+              theme_minimal() +
+              theme(axis.title = element_blank(),
+                    axis.text = element_blank(),
+                    panel.grid = element_blank()) +
+              labs(x='UMAP 1', 
+                   y='UMAP 2', 
+                   color=NULL,
+                   title = "All T cells") +
+              guides(color=guide_legend(), size=guide_legend()) +
+              scale_alpha_continuous(range = c(0.4,1)) +
+              scale_size_continuous(range=c(1,3)) +
+              geom_label_repel(data = integrated_cls, 
+                               mapping = aes(x = U1,
+                                             y=U2, 
+                                             label = seurat_clusters), 
+                               size = 5, 
+                               min.segment.length = Inf, 
+                               show.legend = FALSE) +
+              guides(color=guide_legend(override.aes = list(alpha=1,size=5,shape=19)), 
+                     size=guide_legend()) + 
+              scale_color_manual(values = custom_colors("clusters")))
+```
