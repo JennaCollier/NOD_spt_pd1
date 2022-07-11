@@ -360,7 +360,7 @@ seurat_markers <- FindAllMarkers(seurat_integrated, min.pct = 0.25, only.pos = T
                      arrange(desc(avg_log2FC), .by_group = T) %>%
                      top_n(n = 50, wt = avg_log2FC)
 
-saveRDS(seurat_integrated, "objects/test_seurat.rds")
+saveRDS(seurat_markers, "objects/integrated_seurat_FindAllMarkers.rds")
 
 #identify CD8 and CD4 T cells based on clusters
 new_metadata <- seurat_integrated@meta.data %>% 
