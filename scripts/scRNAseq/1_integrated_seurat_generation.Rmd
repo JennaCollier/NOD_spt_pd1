@@ -524,17 +524,11 @@ new_metadata <- seurat_integrated@meta.data %>%
   column_to_rownames('barcode') %>%
   select(clonotype_count, clonotype_id, clonotype_count_bin)
 seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
-
-#add the new clonotype_ids split by celltype (CD4 or CD8) to cd8 and cd4 separate Seurats
-cd8 <- AddMetaData(cd8, new_metadata)
-cd4 <- AddMetaData(cd4, new_metadata)
 ```
 
 Factor some additional variables to order them properly:
 ```{r factor additional variables}
 seurat_integrated$treatment <- factor(seurat_integrated$treatment, levels = c("IgG", "Spt", "PD1"))
-cd8$treatment <- factor(cd8$treatment, levels = c("IgG", "Spt", "PD1"))
-cd4$treatment <- factor(cd4$treatment, levels = c("IgG", "Spt", "PD1"))
 ```
 
 As a measure of exhaustion, the number of co-inhibitory receptors expressed simultaneously in the same cell can be counted. This will be added to the metadata:
@@ -550,10 +544,6 @@ new_metadata <- seurat_integrated@meta.data %>%
                          celltype = ifelse(seurat_clusters %in% c("Treg_Tigit_lo","Treg_Tigit_hi"), "Treg", paste0(celltype))) %>% 
                   select(cd4_or_cd8, celltype)
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-#add to cd8 and cd4 separate Seurats
-cd8 <- AddMetaData(cd8, new_metadata)
-cd4 <- AddMetaData(cd4, new_metadata)
 ```
 
 ```{r identify tissue shared clonotypes}
@@ -561,7 +551,7 @@ shared_clonotypes <- seurat_integrated@meta.data %>%
   filter(!is.na(clonotype_id)) %>%
   group_by(cd4_or_cd8, clonotype_id, tissue) %>% 
   tally() %>% 
-  summarize(clonotype_tissue_groups = paste(tissue, collapse='&')) %>% 
+  summarize(clonotype_tissue_groups = paste(tissue, collapse = "&")) %>% 
   arrange(desc(clonotype_tissue_groups)) %>% 
   data.frame()
 
@@ -584,10 +574,8 @@ seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 seurat_integrated$tissue_shared <- factor(seurat_integrated$tissue_shared, levels = c("pancreas shared", "pancreas non shared", "pLN shared", "blood shared", "periphery non shared"))
 ```
 
-Finally, save the Seurat objects:
-```{r save seurat objects}
+Finally, save the integrated Seurat object. This will be used as the source for meta data in future Seurats.
+```{r save seurat object}
 #save the Seurats
 saveRDS(seurat_integrated, "objects/seurat_integrated_clustered.rds")
-saveRDS(cd4, "objects/seurat_cd4_clustered.rds")
-saveRDS(cd8, "objects/seurat_cd8_clustered.rds")
 ```
