@@ -16,9 +16,8 @@ custom_colors <- function(pal) {
   }
   
   if (pal == "pm") {
-    return(c("pancreas only" = "#33a02c",
-              "pancreas & periphery" = "#1f78b4",
-              "periphery only" = "#BB5566"))
+    return(c("pancreas shared" = "#1f78b4",
+              "pancreas non shared" = "#33a02c"))
   }
   
   if (pal == "celltypes") {
