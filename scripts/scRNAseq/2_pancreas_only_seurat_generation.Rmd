@@ -21,8 +21,6 @@ require(useful, quietly = T) #corner function to peek at data.frames
 set.seed(1) #set a seed for reproducibility
 ```
 
-## Initialize Seurat object
-
 ```{r read in integrated Seurat}
 seurat_integrated <- readRDS("objects/seurat_integrated_clustered.rds")
 ```
@@ -79,36 +77,70 @@ pan4 <- AddMetaData(pan4, new_metadata) #add to the meta data
 
 new_metadata <- as.data.frame(pan8@reductions$umap@cell.embeddings) #get the cell embeddings
 pan8 <- AddMetaData(pan8, new_metadata) #add to the meta data
-
-#save the Seurats
-saveRDS(pan4, "objects/seurat_cd4_panonly_clustered.rds")
-saveRDS(pan8, "objects/seurat_cd8_panonly_clustered.rds")
 ```
 
-Next, re-calculate the number of each clonotype within the pancreas (not including other tissues):
+Next, re-calculate the number of each clonotype within the pancreas (not including other tissues). This data will be re-added back to the integrated Seurat such that each clonotype that is in the pancreas or shared with the pancreas has the count associated with that clonotype regardless of the tissue of origin of that cell:
 ```{r calculate pancreas clonotype counts}
-new_metadata <- pan4@meta.data %>% 
+#generate a clonotype-centric data frame with the clonotype counts of cells in the pancreas
+pan4_metadata <- pan4@meta.data %>% 
                   rownames_to_column('barcode') %>%
                   filter(!is.na(clonotype_id)) %>%
                   group_by(clonotype_id) %>% 
                   mutate(pan_clonotype_count = n(), 
                   pan_clonotype_count_bin = cut(pan_clonotype_count, 
-                                              breaks=c(0,1,5,20,100,250), 
-                                              labels=c("1","2-4","5-19","20-99","100-250"))) %>%
-                  column_to_rownames('barcode') %>%
-                  dplyr::select(pan_clonotype_count, pan_clonotype_count_bin)
-pan4 <- AddMetaData(pan4, new_metadata) #add the new clonotype count within the pancreas only cells
+                                              breaks = c(0,1,5,20,100,250), 
+                                              labels = c("1","2-4","5-19","20-99","100-250"))) %>%
+                  dplyr::select(clonotype_id, pan_clonotype_count, pan_clonotype_count_bin) %>%
+                  unique()
+metadata_for_integrated <- pan4_metadata #collect clonotype-centric metadata for integrated Seurat object
+pan4_metadata <- merge(pan4@meta.data %>% #generate a data frame with cell barcodes and corresponding clonotype
+                        dplyr::select(clonotype_id) %>% 
+                        filter(!is.na(clonotype_id)) %>% 
+                        rownames_to_column("barcode"),
+                      pan4_metadata, 
+                      by = "clonotype_id") %>% #merge with the clonotype-centric data frame
+                      dplyr::select(-clonotype_id) %>%
+                      column_to_rownames("barcode")
+pan4 <- AddMetaData(pan4, pan4_metadata) #add the new clonotype count within the pancreas only cells
 
-new_metadata <- pan8@meta.data %>% 
+#do the same for CD8 T cells
+pan8_metadata <- pan8@meta.data %>% 
                   rownames_to_column('barcode') %>%
                   filter(!is.na(clonotype_id)) %>%
                   group_by(clonotype_id) %>% 
                   mutate(pan_clonotype_count = n(), 
                   pan_clonotype_count_bin = cut(pan_clonotype_count, 
-                                              breaks=c(0,1,5,20,100,250), 
-                                              labels=c("1","2-4","5-19","20-99","100-250"))) %>%
-                  column_to_rownames('barcode') %>%
-                  dplyr::select(pan_clonotype_count, pan_clonotype_count_bin)
-pan8 <- AddMetaData(pan8, new_metadata) #add the new clonotype count within the pancreas only cells
+                                              breaks = c(0,1,5,20,100,250), 
+                                              labels = c("1","2-4","5-19","20-99","100-250"))) %>%
+                  dplyr::select(clonotype_id, pan_clonotype_count, pan_clonotype_count_bin) %>%
+                  unique()
+metadata_for_integrated <- rbind(metadata_for_integrated, pan8_metadata)
+pan8_metadata <- merge(pan8@meta.data %>% #generate a data frame with cell barcodes and corresponding clonotype
+                        dplyr::select(clonotype_id) %>% 
+                        filter(!is.na(clonotype_id)) %>% 
+                        rownames_to_column("barcode"),
+                      pan8_metadata, 
+                      by = "clonotype_id") %>% #merge with the clonotype-centric data frame
+                      dplyr::select(-clonotype_id) %>%
+                      column_to_rownames("barcode")
+pan8 <- AddMetaData(pan8, pan8_metadata) #add the new clonotype count within the pancreas only cells
+
+#add this data back to the integrated Seurat
+metadata_for_integrated <- merge(seurat_integrated@meta.data %>% #generate a data frame with cell barcodes and corresponding clonotype
+                                dplyr::select(clonotype_id) %>% 
+                                filter(!is.na(clonotype_id)) %>% 
+                                rownames_to_column("barcode"),
+                              metadata_for_integrated, 
+                                by = "clonotype_id") %>% #merge with the clonotype-centric data frame
+                              dplyr::select(-clonotype_id) %>%
+                              column_to_rownames("barcode")
+seurat_integrated <- AddMetaData(seurat_integrated, metadata_for_integrated)
+```
+
+Finally, save the Seurat objects with their new metadata:
+```{r save Seurat objects}
+saveRDS(pan4, "objects/seurat_cd4_panonly_clustered.rds")
+saveRDS(pan8, "objects/seurat_cd8_panonly_clustered.rds")
+saveRDS(seurat_integrated, "objects/seurat_integrated_clustered.rds")
 ```
 

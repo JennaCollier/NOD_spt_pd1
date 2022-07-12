@@ -4,6 +4,8 @@ output: rmarkdown::github_document
 date: '2022-07-10'
 ---
 
+The purpose of this figure is to show the single cell transcriptional landscape of CD4+ and CD8+ T cells during spontaneous and checkpoint-induced T1D in NOD mice.
+
 ```{r setup, include=FALSE, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
 knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
@@ -25,78 +27,73 @@ require(tibble, quietly = T) #rownames_to_column function
 require(useful, quietly = T) #corner function to peek at data.frames
 require(viridis, quietly = T) #viridis color palettes
 require(readxl, quietly = T) #reading Excel files
-require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
 source("scripts/utils.R") #custom color palettes and other functions
 set.seed(1) #set a seed for reproducibility
 ```
 
 ```{r read in Seurats}
 seurat_integrated <- saveRDS("objects/seurat_integrated_clustered.rds")
-cd4 <- readRDS("objects/seurat_cd4_clustered.rds")
-cd8 <- readRDS("objects/seurat_cd8_clustered.rds")
 ```
 
-First, all of the T cells will be clustered on a single UMAP. Additional UMAPs showing distribution of tissues, treatment groups, cell types, and clonotype expansion are also plotted:
+First, all of the T cells (both CD4 and CD8) will be clustered on a single UMAP. Additional UMAPs showing distribution of tissues, treatment groups, cell types, and clonotype expansion are also plotted to show the distribution of the samples. To label the initial UMAP with the Seurat clusters, the centroids of each cluster must be measured.
 ```{r Improved cluster UMAP}
 #define the centroids for labeling the clusters
 integrated_cls <- seurat_integrated@meta.data %>% 
-        dplyr::select(allcells_UMAP_1, allcells_UMAP_2, seurat_clusters) %>% 
-        group_by(seurat_clusters) %>% 
-        summarise(U1=mean(allcells_UMAP_1),U2=mean(allcells_UMAP_2)) %>% 
-        data.frame()
+                    dplyr::select(allcells_UMAP_1, 
+                                  allcells_UMAP_2, 
+                                  seurat_clusters) %>% 
+                    group_by(seurat_clusters) %>% 
+                    summarise(U1 = mean(allcells_UMAP_1),
+                              U2 = mean(allcells_UMAP_2)) %>% 
+                    data.frame()
+integrated_cls
 
+#plot the UMAP from the integrated Seurat containing the cluster labels
 p_allcells_cluster <- seurat_integrated@meta.data %>% 
-              ggplot(aes(x = allcells_UMAP_1, 
-                       y = allcells_UMAP_2, 
-                       color = seurat_clusters)) + 
-              geom_point(shape = 16, alpha = 0.3) +
-              theme_minimal() +
-              theme(axis.title = element_blank(),
-                    axis.text = element_blank(),
-                    text = element_text(size = 15),
-                    panel.grid = element_blank()) +
-              labs(x='UMAP 1', 
-                   y='UMAP 2', 
-                   color=NULL,
-                   title = "All T cells") +
-              scale_alpha_continuous(range = c(0.4,1)) +
-              scale_size_continuous(range=c(1,3)) +
-              geom_label_repel(data = integrated_cls, #change depending on Seurat used
-                               mapping = aes(x = U1,
-                                             y=U2, 
-                                             label = seurat_clusters), 
-                               size = 5, 
-                               min.segment.length = Inf, 
-                               show.legend = FALSE) +
-              guides(color=guide_legend(override.aes = list(alpha=1, 
-                                                            size=5, 
-                                                            shape=19)), 
-                     size=guide_legend()) + 
-              scale_color_manual(values = custom_colors("clusters"))
+                        ggplot(aes(x = allcells_UMAP_1, 
+                                   y = allcells_UMAP_2, 
+                                   color = seurat_clusters)) + 
+                        geom_point(shape = 16, 
+                                   alpha = 0.3) +
+                        theme_minimal() +
+                        theme(axis.title = element_blank(),
+                              axis.text = element_blank(),
+                              text = element_text(size = 15),
+                              panel.grid = element_blank()) +
+                        labs(color = NULL,
+                             title = "All T cells") +
+                        geom_label_repel(data = integrated_cls, #these centroids will change depending on Seurat used
+                                         mapping = aes(x = U1,
+                                                       y = U2, 
+                                                       label = seurat_clusters), 
+                                         size = 5, 
+                                         min.segment.length = Inf, 
+                                         show.legend = FALSE) +
+                        guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
+                                                                      size = 5, 
+                                                                      shape = 19))) + 
+                        scale_color_manual(values = custom_colors("clusters"))
 
+#plot the UMAP of the different treatment groups
 p_treatment <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = treatment)) + 
-    geom_point(shape = 16, alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          axis.text = element_blank(),
-          panel.grid = element_blank(),
-          text = element_text(size = 15),
-          legend.position = c(0.1,0.1)) +
-    labs(x='UMAP 1', 
-         y='UMAP 2', 
-         color=NULL,
-         title = "All T cells: Treatment groups") +
-    scale_alpha_continuous(range = c(0.4,1)) +
-    scale_size_continuous(range=c(1,3)) +
-    guides(color=guide_legend(override.aes = list(alpha=1, 
-                                                  size=5, 
-                                                  shape=19)), 
-           size=guide_legend()) + 
-    scale_color_manual(values = custom_colors("treatments"))
+                ggplot(aes(x = allcells_UMAP_1, 
+                           y = allcells_UMAP_2, 
+                           color = treatment)) + 
+                geom_point(shape = 16, alpha = 0.3) +
+                theme_minimal() +
+                theme(axis.title = element_blank(),
+                      axis.text = element_blank(),
+                      panel.grid = element_blank(),
+                      text = element_text(size = 15),
+                      legend.position = c(0.1,0.1)) +
+                labs(color = NULL,
+                     title = "All T cells: Treatment groups") +
+                guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                              size = 5, 
+                                                              shape = 19))) + 
+                scale_color_manual(values = custom_colors("treatments"))
 
+#plot the UMAP of the different tissues
 p_tissues <- seurat_integrated@meta.data %>% 
     ggplot(aes(x = allcells_UMAP_1, 
                y = allcells_UMAP_2, 
@@ -108,18 +105,14 @@ p_tissues <- seurat_integrated@meta.data %>%
           panel.grid = element_blank(),
           text = element_text(size = 15),
           legend.position = c(0.1,0.1)) +
-    labs(x='UMAP 1', 
-         y='UMAP 2', 
-         color=NULL,
+    labs(color = NULL,
          title = "All T cells: Tissues") +
-    scale_alpha_continuous(range = c(0.4,1)) +
-    scale_size_continuous(range=c(1,3)) +
-    guides(color=guide_legend(override.aes = list(alpha=1, 
-                                                  size=5, 
-                                                  shape=19)), 
-           size=guide_legend()) + 
+    guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                  size = 5, 
+                                                  shape = 19))) + 
     scale_color_manual(values = custom_colors("tissues"))
 
+#plot the UMAP of the different celltypes
 p_celltypes <- seurat_integrated@meta.data %>% 
     ggplot(aes(x = allcells_UMAP_1, 
                y = allcells_UMAP_2, 
@@ -131,18 +124,14 @@ p_celltypes <- seurat_integrated@meta.data %>%
           panel.grid = element_blank(),
           text = element_text(size = 15),
           legend.position = c(0.1,0.1)) +
-    labs(x='UMAP 1', 
-         y='UMAP 2', 
-         color=NULL,
-         title = "All T cells: T cell types") +
-    scale_alpha_continuous(range = c(0.4,1)) +
-    scale_size_continuous(range=c(1,3)) +
-    guides(color=guide_legend(override.aes = list(alpha=1, 
-                                                  size=5, 
-                                                  shape=19)), 
-           size=guide_legend()) + 
+    labs(color=NULL,
+         title = "All T cells: Cell types") +
+    guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                  size = 5, 
+                                                  shape = 19))) + 
     scale_color_manual(values = custom_colors("celltypes"))
 
+#plot the UMAP of clonotype expansion
 p_expansion <- seurat_integrated@meta.data %>% 
     ggplot(aes(x = allcells_UMAP_1, 
                y = allcells_UMAP_2, 
@@ -153,15 +142,11 @@ p_expansion <- seurat_integrated@meta.data %>%
           axis.text = element_blank(),
           panel.grid = element_blank(),
           text = element_text(size = 15),
-          legend.position = c(0.2,0.1)) +
-    labs(x='UMAP 1', 
-         y='UMAP 2', 
-         color=expression(log[10](clonotype~count+1)),
+          legend.position = c(0.2, 0.1)) +
+    labs(color=expression(log[10](clonotype~count+1)), #this puts the 10 as a subscript for the log10
          title = "All T cells: Clonotype expansion") +
-    scale_alpha_continuous(range = c(0.4,1)) +
-    scale_size_continuous(range=c(1,3)) +
     scale_color_viridis(direction = -1, option = "D") +
-    guides(color = guide_colorbar(ticks.color = NA)) #removes ticks from colorbar
+    guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
 
 grid.arrange(p_tissues, p_treatment, p_celltypes, p_expansion, nrow = 2)
 ```
@@ -169,14 +154,14 @@ grid.arrange(p_tissues, p_treatment, p_celltypes, p_expansion, nrow = 2)
 Next, create a stacked bar chart showing the distribution of tissues in each Seurat cluster:
 ```{r stacked bar chart of tissues per seurat cluster}
 p_tissue_per_seurat_cluster <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x=factor(seurat_clusters, 
-                        levels = rev(levels(seurat_integrated$seurat_clusters))), 
-                        fill=tissue)) + 
-    geom_bar(stat="count", 
+    ggplot(aes(x = factor(seurat_clusters, 
+                        levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
+                        fill = tissue)) + 
+    geom_bar(stat = "count", 
              position = "fill") + 
-    scale_x_discrete(expand = c(0,0)) +
+    scale_x_discrete(expand = c(0, 0)) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
-                       expand=c(0,0)) +
+                       expand = c(0, 0)) +
     theme_minimal() +
     theme(panel.grid = element_blank(),
           text = element_text(size = 15),
@@ -190,13 +175,16 @@ p_tissue_per_seurat_cluster <- seurat_integrated@meta.data %>%
 p_tissue_per_seurat_cluster
 ```
 
-To plot a heatmap of genes of interest across the clusters in Morpheus, the following manually annotated list of genes of interest, **goi**, will be examined. The average expression for each cluster will be determined and this data will be used to plot in Morpheus (Broad institute). The average expression for every gene will be determined to plot the pearson correlations for the seurat clusters across tissues as well. 
+To plot a heatmap of genes of interest across the clusters in Morpheus, the following manually annotated list of genes of interest, **goi**, will be examined. The average expression for each cluster will be determined and this data will be used to plot in Morpheus (Broad institute). The average expression for every gene will be determined to plot the pearson correlations for the Seurat clusters across tissues as well. 
 ```{r heatmap data for Morpheus}
-avgs <- as.data.frame(t(AverageExpression(seurat_integrated, assay = "RNA", group.by = c("tissue", "seurat_clusters"))$RNA)) #get average expression for each gene (column) in each tissue/cluster pair (row)
-avgs <- avgs %>% rownames_to_column("tissue_and_cluster")
+## average gene expression of each tissue for each cluster - for Pearson correlation
+avgs <- as.data.frame(t(AverageExpression(seurat_integrated, 
+                                          assay = "RNA", 
+                                          group.by = c("tissue", "seurat_clusters"))$RNA)) #get average expression for each gene (column) in each tissue/cluster pair (row)
+avgs <- avgs %>% rownames_to_column("tissue_and_cluster") #the generated rownames include the tissue and cluster
 avgs <- avgs %>% 
-          mutate(tissue = sapply(tissue_and_cluster, function(x) strsplit(x, "_")[[1]][1]), 
-                 seurat_clusters = sapply(tissue_and_cluster, function(x) paste(strsplit(x, "_")[[1]][-1], collapse = "_"))) %>% 
+          mutate(tissue = sapply(tissue_and_cluster, function(x) strsplit(x, "_")[[1]][1]), #parse the tissue out to a separate column
+                 seurat_clusters = sapply(tissue_and_cluster, function(x) paste(strsplit(x, "_")[[1]][-1], collapse = "_"))) %>%  #parse the cluster name to a separate column
           relocate(tissue_and_cluster, tissue, seurat_clusters) #move columns to left of data frame
 write.table(avgs, "output/seurat_cluster_avg_expression_all_genes_for_morpheus.tsv", sep = "\t", quote = F, row.names = F) #write the data to table
 
@@ -210,9 +198,9 @@ apoptosis <- c("Casp3","Tnfsf11","Nr4a3","Nfkb1","Nlrp3")
 proliferation <- c("Mki67","Stmn1","Birc5","Pclaf")
 ifnstim <- c("Isg15","Ifi27l2a","Ifit1","Ifit3")
 
-goi <- c(coinh,surface,eff,tf,chemokines,apoptosis,proliferation,ifnstim)
+goi <- c(coinh,surface,eff,tf,chemokines,apoptosis,proliferation,ifnstim) #concatenate all of the genes of interest
 
-# create a data frame of annotated genes
+## create a data frame of annotated genes based on function
 goi_annot <- data.frame(gene = goi, 
            group = c(rep("coinhibtory",length(coinh)),
                      rep("surface",length(surface)),
@@ -223,116 +211,37 @@ goi_annot <- data.frame(gene = goi,
                      rep("proliferation",length(proliferation)),
                      rep("ifnstim",length(ifnstim))))
 
-avgs <- as.data.frame(AverageExpression(seurat_integrated, features = goi, assay = "RNA", group.by = "seurat_clusters")$RNA) #get average expression for each gene of interest
+avgs <- as.data.frame(AverageExpression(seurat_integrated, 
+                                        features = goi, 
+                                        assay = "RNA", 
+                                        group.by = "seurat_clusters")$RNA) #get average expression for each gene of interest
 avgs <- avgs %>% rownames_to_column("gene")
 avgs <- merge(goi_annot, avgs, by = "gene")
 write.table(avgs, "output/seurat_cluster_avg_expression_curated_genes_for_morpheus.tsv", sep = "\t", quote = F, row.names = F) #write the data to table
 
-seurat_markers <- FindAllMarkers(seurat_integrated, min.pct = 0.25, only.pos = T, logfc.threshold = 0.25) %>%
+#get the markers that can be used to define each cluster
+seurat_markers <- FindAllMarkers(seurat_integrated, 
+                                 min.pct = 0.25, 
+                                 only.pos = T, 
+                                 logfc.threshold = 0.25) %>%
                      group_by(cluster) %>%
                      filter(p_val_adj < 0.05) %>%
                      group_by(cluster) %>%
                      arrange(desc(avg_log2FC), .by_group = T) %>%
-                     top_n(n = 50, wt = avg_log2FC)
-
+                     top_n(n = 50, 
+                           wt = avg_log2FC)
 saveRDS(seurat_markers, "objects/integrated_seurat_FindAllMarkers.rds")
 
-avgs <- as.data.frame(AverageExpression(seurat_integrated, assay = "RNA", group.by = "seurat_clusters")$RNA) #get average expression for each gene (column) in each cluster (row)
+avgs <- as.data.frame(AverageExpression(seurat_integrated, 
+                                        assay = "RNA", 
+                                        group.by = "seurat_clusters")$RNA) #get average expression for each gene (column) in each cluster (row)
 avgs <- avgs %>% rownames_to_column("gene")
 
-top10_genes <- seurat_markers %>% group_by(cluster) %>%
+## write a table containing the top 20 DE genes for each cluster
+top20_genes <- seurat_markers %>% group_by(cluster) %>%
                       arrange(desc(avg_log2FC), .by_group = T) %>%
                       top_n(n = 20, wt = avg_log2FC) %>%
                       dplyr::select(gene, cluster)
 
-write.table(top10_genes, "output/integrated_seurat_FindAllMarkers_top20.tsv", quote = F, sep = "\t", row.names = F)
-```
-
-Next, a dot plot will be generated to show the expression of various gene signatures for the clusters:
-```{r dot plot of gene module scores}
-#read in data from excel sheets
-prog_exh <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Progenitor Exh.")$gene
-term_exh <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Terminally Exh.")$gene
-eff_like <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Effector-like")$gene
-trm <- read_excel("ref/signatures/20200711_Beura_Trm_2017_Immunity.xlsx", sheet = "Beura_FRT_TRM_UP",col_names = F)$`...1`
-nonbystander <- read_excel("ref/signatures/20200718_Mognol_PNAS2017_bystanders.xlsx", sheet = "OT-1 UP (TS)",col_names = F)$`...1`
-bystander <- read_excel("ref/signatures/20200718_Mognol_PNAS2017_bystanders.xlsx", sheet = "P14 UP (bystander)",col_names = F)$`...1`
-cd8_activation <- read.table("ref/signatures/cd8_activation_sarkar_up.txt")$V1
-cell_cycle <- read.table("ref/signatures/cell_cycle_all_strong.txt")$V1
-lag3 <- read_excel("ref/signatures/stephanie_de_genes.xlsx") #these DE genes are from FindAllMarkers, so they will be parsed out into separate signatures
-  lag3exh1 <- lag3 %>% filter(cluster == 1) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
-  lag3progexh2 <- lag3 %>% filter(cluster == 2) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
-  lag3exh3 <- lag3 %>% filter(cluster == 3) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
-  lag3act4 <- lag3 %>% filter(cluster == 4) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
-  lag3act6 <- lag3 %>% filter(cluster == 6) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
-  lag3eff7 <- lag3 %>% filter(cluster == 7) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
-  lag3mem8 <- lag3 %>% filter(cluster == 8) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
-
-#some of these are human gene symbols that must be converted to mouse
-trm <- convertHumanGeneList(trm)
-cell_cycle <- convertHumanGeneList(cell_cycle)
-cd8_activation <- convertHumanGeneList(cd8_activation)
-
-#some gene signatures will be from msigdb
-m_df <- msigdbr(species = "Mus musculus", category = "C7")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(m_df %>% 
-                                             filter(gs_name == "GSE8678_IL7R_LOW_VS_HIGH_EFF_CD8_TCELL_UP") %>% 
-                                             dplyr::select(gene_symbol) %>% pull()), 
-                      name = "SLEC", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(m_df %>% 
-                                             filter(gs_name == "GSE8678_IL7R_LOW_VS_HIGH_EFF_CD8_TCELL_DN") %>% 
-                                             dplyr::select(gene_symbol) %>% pull()), 
-                      name = "MPEC", assay = "RNA") 
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(m_df %>% 
-                                             filter(gs_name == "KAECH_DAY15_EFF_VS_MEMORY_CD8_TCELL_UP") %>% 
-                                             dplyr::select(gene_symbol) %>% pull()), 
-                      name = "KAECH_DAY15_EFF_VS_MEMORY_CD8_TCELL_UP", assay = "RNA")
-
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(prog_exh), name = "Miller2019_progenitor_exh", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(term_exh), name = "Miller2019_terminally_exh", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(eff_like), name = "Miller2019_effector_like", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(trm), name = "beura_trm", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(nonbystander), name = "nonbystander", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(bystander), name = "bystander", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(cd8_activation), name = "activation_sarkar", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(cell_cycle), name = "cell_cycle", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(lag3exh1), name = "lag3exh1", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(lag3progexh2), name = "lag3progexh2", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(lag3exh3), name = "lag3exh3", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(lag3mem8), name = "lag3mem8", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(lag3eff7), name = "lag3eff7", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(lag3act4), name = "lag3act4", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, features = list(lag3act6), name = "lag3act6", assay = "RNA")
-
-gene_signatures <- c("SLEC1",
-                     "MPEC1",
-                     "KAECH_DAY15_EFF_VS_MEMORY_CD8_TCELL_UP1",
-                      "Miller2019_progenitor_exh1",
-                     "Miller2019_terminally_exh1",
-                     "Miller2019_effector_like1",
-                     "beura_trm1",
-                     "nonbystander1",
-                     "bystander1",
-                     "cell_cycle1",
-                     "activation_sarkar1",
-                     "lag3exh11",
-                     "lag3progexh21",
-                     "lag3exh31",
-                     "lag3mem81",
-                     "lag3eff71",
-                     "lag3act41",
-                     "lag3act61")
-
-#ggplot dotplot
-melted_data <- seurat_integrated@meta.data %>%
-                dplyr::select(seurat_clusters,any_of(gene_signatures)) %>%
-                group_by(seurat_clusters) %>%
-                summarise_if(is.numeric, mean, na.rm = TRUE) %>%
-                reshape2::melt(id.vars = "seurat_clusters")
-
-melted_data %>%
-  ggplot(aes(x = variable,
-             y = seurat_clusters,
-             size = value)) +
-  geom_point()
+write.table(top20_genes, "output/integrated_seurat_FindAllMarkers_top20.tsv", quote = F, sep = "\t", row.names = F)
 ```

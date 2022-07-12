@@ -4,6 +4,8 @@ output: rmarkdown::github_document
 date: '2022-07-10'
 ---
 
+The purpose of this figure is to show that CD8+ T cells in the pancreas show a gain in proliferation, gain in exhaustion-like features, and loss of memory-like features in checkpoint-induced T1D compared to spontaneous T1D.
+
 ```{r setup, include=FALSE, echo=FALSE}
 knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
 knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
@@ -31,9 +33,510 @@ set.seed(1) #set a seed for reproducibility
 ```
 
 ```{r read in Seurats}
-seurat_integrated <- saveRDS("objects/seurat_integrated_clustered.rds")
-cd4 <- readRDS("objects/seurat_cd4_clustered.rds")
-cd8 <- readRDS("objects/seurat_cd8_clustered.rds")
+pan8 <- readRDS("objects/seurat_cd8_panonly_clustered.rds")
 ```
 
 The purpose of these figures are to show that PD-1 blockade promotes CD8+ T cell clonal expansion, loss of a memory-like subset, and exhaustion-like transcriptional features in NOD pancreas.
+
+```{r plot UMAP of different treatment groups}
+pan8_cls <- pan8@meta.data %>% 
+        dplyr::select(UMAP_1, UMAP_2, seurat_clusters) %>% 
+        group_by(seurat_clusters) %>% 
+        summarise(U1 = mean(UMAP_1), U2 = mean(UMAP_2)) %>% 
+        data.frame()
+
+p_cd8_panonly_cluster <- pan8@meta.data %>% 
+                            ggplot(aes(x = UMAP_1, 
+                                     y = UMAP_2, 
+                                     color = seurat_clusters)) + 
+                            geom_point(shape = 16, 
+                                       alpha = 0.6) +
+                            theme_minimal() +
+                            theme(axis.title = element_blank(),
+                                  axis.text = element_blank(),
+                                  text = element_text(size = 15),
+                                  panel.grid = element_blank()) +
+                            labs(x = 'UMAP 1', 
+                                 y = 'UMAP 2', 
+                                 color = "Seurat clusters",
+                                 title = "CD8+ T cells in the pancreas",
+                                 size = "Size of clonotype\n(pancreas only)") +
+                            scale_alpha_continuous(range = c(0.4,1)) +
+                            scale_size_continuous(range=c(1,3)) +
+                            geom_label_repel(data = pan8_cls, #change depending on Seurat used
+                                 mapping = aes(x = U1,
+                                               y=U2, 
+                                               label = seurat_clusters), 
+                                 size = 5, 
+                                 min.segment.length = Inf, 
+                                 show.legend = FALSE) +
+                            guides(color = guide_legend(override.aes = list(alpha=1, 
+                                                                          size=5, 
+                                                                          shape=19)), 
+                                   size = guide_legend()) +
+                            scale_color_manual(values = custom_colors("clusters"),
+                                               limits = force) #drops unused clusters in legend
+
+p_cd8_panonly_treatments <- pan8@meta.data %>% 
+                              ggplot(aes(x = UMAP_1, 
+                                       y = UMAP_2, 
+                                       color = seurat_clusters,
+                                       size = pan_clonotype_count)) + 
+                              geom_point(data = pan8@meta.data %>%
+                                           dplyr::select(-treatment), 
+                                           shape = 16,
+                                           color = "grey90") +
+                              geom_point(shape = 16, 
+                                         alpha = 0.6) +
+                              theme_minimal() +
+                              theme(axis.title = element_blank(),
+                                    axis.text = element_blank(),
+                                    text = element_text(size = 15),
+                                    panel.grid = element_blank(),
+                                    legend.position = "none") +
+                              labs(x = 'UMAP 1', 
+                                   y = 'UMAP 2', 
+                                   color = "Seurat clusters",
+                                   title = "CD8+ T cells in the pancreas",
+                                   size = "Size of clonotype\n(pancreas only)") +
+                              scale_alpha_continuous(range = c(0.4,1)) +
+                              scale_size_continuous(range=c(1,3)) +
+                              facet_wrap(~treatment) +
+                              scale_color_manual(values = custom_colors("clusters"),
+                                                 limits = force) #drops unused clusters in legend
+
+grid.arrange(p_cd8_panonly_cluster, p_cd8_panonly_treatments, widths = c(3,6))
+```
+
+Next, a stacked bar plot of the treatment group distribution within each seurat cluster:
+```{r stacked bar chart of treatment groups per seurat cluster}
+p_treatment_per_seurat_cluster <- pan8@meta.data %>% 
+    ggplot(aes(x=factor(seurat_clusters, 
+                        levels = rev(levels(pan8$seurat_clusters))), 
+                        fill = treatment)) + 
+    geom_bar(stat="count", 
+             position = "fill") + 
+    scale_x_discrete(expand = c(0,0)) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                       expand=c(0,0)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    labs(title = "CD8+ T cells in the pancreas", 
+         y = "Percent of Seurat Cluster", 
+         x = NULL,
+         color = "Tissue") +
+    scale_fill_manual(values = custom_colors("treatments")) +
+    coord_flip()
+p_treatment_per_seurat_cluster
+```
+
+A volcano plot shows the DE genes between the PD1 and Spt treatment groups:
+```{r volcano plot of pancreas-only differences PD1 and Spt}
+cutoff <- 0.25 #set a cutoff for DE gene expression
+ident1 <- "PD1"
+ident2 <- "Spt"
+
+Idents(pan8) <- pan8$treatment
+volcanodata <- FindMarkers(pan8, #define the table of DE genes
+                       ident.1 = ident1,
+                       ident.2 = ident2, 
+                       verbose = F,
+                       only.pos = F, 
+                       logfc.threshold = cutoff, 
+                       assay = "RNA")
+volcanodata$gene <- rownames(volcanodata) #rownames are genes
+corner(volcanodata)
+
+#assess significance
+volcanodata$DE <- 'None' #set all significance to none
+volcanodata[which(volcanodata$p_val_adj < 0.05 & volcanodata$avg_log2FC >= cutoff),"DE"] <- ident1 #positive avg_log2FC are associated with ident.1
+volcanodata[which(volcanodata$p_val_adj < 0.05 & volcanodata$avg_log2FC <= -cutoff),"DE"] <- ident2 #negative avg_log2FC are associated with ident.2
+
+#label individual genes
+delabels <- volcanodata %>% filter(DE != 'None') %>% group_by(DE) #only label significant genes
+delabels <- delabels %>% filter(gene %in% goi) #filter based on genes of interest
+
+volcanodata %>%
+    ggplot(aes(x = avg_log2FC,
+               y = -log10(p_val_adj))) + 
+        geom_hline(yintercept = -log10(0.05),
+                   size = 0.5,
+                   color = "grey90",
+                   alpha = 0.5) + 
+        geom_vline(xintercept = c(-cutoff, cutoff),
+                   size = 0.5,
+                   color = "grey90",
+                   alpha = 0.5) + 
+        geom_point(aes(color = DE),
+                   size = 3,
+                   alpha = 0.5,
+                   shape = 16) +
+        scale_color_manual(values = c("None" = "grey70",
+                                      custom_colors("treatments"))) +
+        scale_y_continuous(limits = c(0,125)) +
+        theme_minimal() +
+        theme(panel.grid = element_blank(),
+              text = element_text(size = 15),
+              axis.text = element_text(), 
+              axis.title = element_text()) +
+        labs(x = paste("Average Log2 Fold Change (",ident1,"/",ident2,")"),
+             y = expression(-log[10]~(Adjusted~p~Value)),
+             title="CD8+ T cells in pancreas of Spt") +
+        geom_label_repel(data = delabels,
+                         aes(x = avg_log2FC,
+                             y = -log10(p_val_adj),
+                             label = gene,
+                             color = DE),
+                         label.size = NA,
+                         label.padding = 0.2, 
+                         na.rm = TRUE,
+                         fill = alpha(c("white"), 0.8), 
+                         size=7, 
+                         max.overlaps = 50)
+```
+
+Show the top 50 clonotypes as a percentage of TCRs detected as a cumulative sum. The clone sizes for the different treatment groups are also plotted. The diversity analysis is done by calculating the Simpson index without replacement, as it is less affected by differences in the absolute number of cells:
+```{r top 50 clonotypes and clone size}
+## TOP 50 CLONOTYPES
+cumulative_sums <- pan8@meta.data %>% filter(!is.na(clonotype_id)) %>% 
+                      group_by(treatment, clonotype_id, pan_clonotype_count) %>% 
+                      tally() %>% 
+                      group_by(treatment) %>% 
+                      mutate(prcnt = n*100/sum(n)) %>% 
+                      group_by(treatment) %>% 
+                      arrange(treatment, desc(prcnt)) %>% 
+                      mutate(cs = cumsum(prcnt))
+
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = cumulative_sums$clonotype_id)
+
+p_top50_clonos <- cumulative_sums %>% 
+                    group_by(treatment) %>% 
+                    slice_head(n = 50) %>% 
+                    ggplot(aes(x = clonotype_id, 
+                               y = cs, 
+                               color = treatment)) + 
+                    geom_point() + 
+                    geom_segment(aes(xend = clonotype_id, 
+                                     yend = cs, 
+                                     x = clonotype_id, 
+                                     y = 0, 
+                                     color = treatment)) + 
+                    scale_color_manual(values = custom_colors("treatments")) +
+                    scale_y_continuous(expand = c(0, 0), 
+                                       limits = c(0, 80)) +
+                    theme_minimal() +
+                    theme(panel.grid = element_blank(),
+                          panel.spacing.x = unit(0, "lines"),
+                          text = element_text(size = 15),
+                          axis.text.x = element_blank(),
+                          panel.border = element_rect(colour = "black", 
+                                                      fill = NA, 
+                                                      size = 1),
+                          legend.position = "none") +
+                    labs(x = "Top 50 clonotypes", 
+                         y = "Cumulative % CD8 TCRs",
+                         title = "CD8+ T cells in pancreas") +
+                    facet_wrap(~ treatment, scales = "free_x")
+p_top50_clonos
+
+## BOXPLOT OF CLONE SIZE
+stat.test <- data.frame(pan8@meta.data %>%
+                          dplyr::select(treatment, clonotype_id, pan_clonotype_count) %>%
+                          unique() %>%
+                          wilcox_test(pan_clonotype_count ~ treatment) %>% 
+                          add_xy_position() %>%
+                          mutate(y.position = log10(y.position + 1)))
+
+pan8@meta.data %>%
+    dplyr::select(treatment, clonotype_id, pan_clonotype_count) %>%
+    unique() %>%
+    ggplot() + 
+    geom_boxplot(aes(x = treatment, 
+               y = log10(pan_clonotype_count+1), 
+               fill = treatment,
+               color = treatment),
+               outlier.shape = NA, 
+               alpha = 0.5) +
+    geom_point(aes(x = treatment, 
+               y = log10(pan_clonotype_count+1), 
+               fill = treatment,
+               color = treatment),
+               position = position_jitter(0.2),
+               alpha = 0.1) +
+    scale_fill_manual(values = custom_colors("treatments")) +
+    scale_color_manual(values = custom_colors("treatments")) +
+    theme_minimal() +
+  scale_y_continuous(limits = c(0.3, 2.9)) +
+    theme(panel.grid = element_blank(),
+          axis.title.x = element_blank(),
+          text = element_text(size = 15),
+          panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+    labs(y = expression(log[10](clone~size~+1)),
+         color = "Treatment",
+         fill = "Treatment",
+         title = "CD8+ T cells in pancreas\n(unique clonotypes)") +
+    add_pvalue(stat.test,
+               label = "p.adj.signif",
+               step.increase = 0.05,
+               tip.length = 0,
+               label.size = 7) 
+
+#DIVERSITY ANALYSIS
+tcrtypecounts <- rbind(data.frame(pan8@meta.data %>% dplyr::select(treatment, mouse_id, clonotype_id, clonotype_count)))
+corner(tcrtypecounts)
+
+tcrtypecounts <- tcrtypecounts %>% filter(!is.na(clonotype_id)) %>% cast(treatment + mouse_id  ~ clonotype_id)
+corner(tcrtypecounts)
+
+totalN <- tcrtypecounts %>% select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+
+# Calculate simpson index
+diversities <- data.frame(tcrtypecounts %>% 
+                            dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD8", 
+                          simpson = totalN*(totalN - 1) / numerator)
+
+diversities$treatment <- factor(diversities$treatment, levels = c("IgG", "Spt", "PD1")) #factor the pathologies
+
+stat.test <- data.frame(diversities %>% 
+                            mutate(simpson = ifelse(simpson == Inf, NA, simpson)) %>% 
+                            wilcox_test(simpson ~ treatment) %>% 
+                            add_xy_position())
+
+diversities %>%
+    ggplot(aes(x = treatment, 
+               y = simpson,
+               fill = treatment, 
+               color = treatment)) + 
+    geom_violin(alpha = 0.5,
+                adjust = 1,
+                scale = "width",
+                trim = F) + 
+    geom_point(size = 5) +
+    labs(y = "Simpson index") +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          text = element_text(size = 15),
+          panel.border = element_rect(colour = "black", 
+                                      fill = NA, 
+                                      size = 1),
+          legend.position = "bottom") +
+    labs(title = "CD8 T cells in pancreas") +
+    scale_fill_manual(values = custom_colors("treatments")) +
+    scale_color_manual(values = custom_colors("treatments")) +
+    add_pvalue(stat.test,
+               inherit.aes = F,
+               label = "p.adj.signif",
+                y.position = "y.position") 
+
+```
+
+There is an outstanding question in the field as to whether diabetogenic T cells become exhausted in the pancreas. To explore this, co-inhibitory receptor expression is examined, in addition to expression of an exhaustion-associated gene signature:
+```{r}
+p_cd8_panonly_coinh_umap <- pan8@meta.data %>% 
+                        ggplot(aes(x = UMAP_1, 
+                                   y = UMAP_2, 
+                                   color = coinh_count)) + 
+                        geom_point(shape = 16, 
+                                   alpha = 0.6) +
+                        theme_minimal() +
+                        theme(axis.title = element_blank(),
+                              axis.text = element_blank(),
+                              text = element_text(size = 15),
+                              legend.position = c(0.85,0.85),
+                              panel.grid = element_blank()) +
+                        labs(x = 'UMAP 1', 
+                             y = 'UMAP 2', 
+                             color = "Co-inhibitory\nreceptors\nexpressed",
+                             title = "CD8+ T cells in the pancreas") +
+                        guides(color = guide_legend(override.aes = list(alpha=1, 
+                                                                        size=5, 
+                                                                        shape=19)), 
+                               size = guide_legend()) +
+                        scale_color_viridis(option = "E", direction = -1)
+
+p_cd8_panonly_coinh_violin <- pan8@meta.data %>% 
+                                ggplot(aes(x = treatment, 
+                                         y = coinh_count, 
+                                         fill = treatment,
+                                         color = treatment)) + 
+                                  geom_violin(adjust = 2, 
+                                              scale = "width", 
+                                              trim = F, 
+                                              alpha = 0.5, 
+                                              draw_quantiles = c(0.25,0.5,0.75), 
+                                              lwd = 1) +
+                                  scale_fill_manual(values = custom_colors("treatments")) +
+                                  scale_color_manual(values = custom_colors("treatments")) +
+                                  theme_minimal() +
+                                  theme(panel.grid = element_blank(),
+                                        axis.title.x = element_blank(),
+                                        text = element_text(size = 15),
+                                        panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+                                  labs(y = "Number of co-inhibitory receptors expressed",
+                                       color = "Treatment",
+                                       fill = "Treatment",
+                                       title = "CD8+ T cells in pancreas")
+
+# TERMINALLY EXHAUSTED MODULE SCORE ALL CELLS
+p_vals <- pan8@meta.data %>% 
+            wilcox_test(Miller2019_terminally_exh1 ~ treatment) %>%
+            add_xy_position() %>%
+            filter(p.adj <= 0.05)
+pan8@meta.data %>% 
+  ggplot(aes(x = treatment,
+             y = Miller2019_terminally_exh1,
+             color = treatment,
+             fill = treatment)) + 
+  geom_violin(adjust=2, 
+              alpha=0.5, 
+              draw_quantiles = c(0.25,0.5,0.75), 
+              lwd=1) + 
+  scale_color_manual(values = custom_colors("treatments")) + 
+  scale_fill_manual(values = custom_colors("treatments")) +  
+  theme_minimal() + 
+  theme(text = element_text(size=15),
+        panel.border = element_rect(fill = NA,
+                                    color = "black"),
+        axis.title.x = element_blank(),
+        panel.grid = element_blank()) +
+  labs(title = "Pancreas CD8+ T cells", 
+       y = "Miller2019 terminally\nexhausted score",
+       color = "Treatment",
+       fill = "Treatment") + 
+  add_pvalue(p_vals,
+               inherit.aes = F,
+               label.size = 8,
+               step.increase = 0.05)
+
+# TERMINALLY EXHAUSTED MODULE SCORE BY MOUSE
+pan8@meta.data %>% 
+    group_by(treatment,mouse_id) %>% 
+    summarize(avgs = mean(Miller2019_terminally_exh1)) %>% 
+    ggplot(aes(x = treatment,
+               y = avgs,
+               color = treatment,
+               fill = treatment)) + 
+    geom_violin(adjust = 1,
+                trim = F,
+                alpha = 0.5, 
+                lwd = 1) + 
+    geom_point(size = 5, shape = 21, stroke = 2, alpha = 0.2) +
+    scale_color_manual(values = custom_colors("treatments")) + 
+    scale_fill_manual(values = custom_colors("treatments")) +  
+    theme_minimal() + 
+    theme(text = element_text(size=15),
+          panel.border = element_rect(fill = NA,
+                                      color = "black"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank()) +
+    labs(title = "Pancreas CD8+ T cells", 
+         y = "Miller2019 terminally\nexhausted score",
+         color = "Treatment",
+         fill = "Treatment")
+```
+
+A Chi squared and Fisher's exact test will be used to measure the differences in the proportions of each cluster. This is done by looping through clusters and treatment groups to build a list of contingency tables:
+```{r Fisher's exact test of proportions of clusters}
+contingency_list <- list() #contingency tables as a list
+df <- data.frame() #list of results from stats tests
+
+#create a table containing raw count data
+tbl <- pan8@meta.data %>% 
+          group_by(treatment, seurat_clusters) %>% 
+          tally() %>% 
+          cast(seurat_clusters ~ treatment, value = "n")
+tbl$seurat_clusters <- factor(tbl$seurat_clusters)
+head(tbl)
+
+#loop through treatments and clusters to build list of contingency tables
+for (current_treatment in levels(pan8$treatment)) {
+  for (current_cluster in levels(tbl$seurat_clusters)) {
+    contingency_list[[current_treatment]][[current_cluster]] <- data.frame(treatment = c(pan8@meta.data %>% 
+                               filter(seurat_clusters == current_cluster & treatment == current_treatment) %>% count() %>% pull(n),
+               pan8@meta.data %>% filter(seurat_clusters == current_cluster & treatment != current_treatment) %>% count() %>% pull(n)),
+               not_treatment = c(pan8@meta.data %>% filter(seurat_clusters != current_cluster & treatment == current_treatment) %>% count() %>% pull(n),
+               pan8@meta.data %>% filter(seurat_clusters != current_cluster & treatment != current_treatment) %>% count() %>% pull(n)), 
+               row.names = c("cluster","not_cluster"))
+    df <- rbind(df, 
+                data.frame(treatment = current_treatment, 
+                           cluster = current_cluster, 
+                           fisher.p.value = fisher.test(contingency_list[[current_treatment]][[current_cluster]])$p.value,
+                           chisq.p.value = chisq.test(contingency_list[[current_treatment]][[current_cluster]])$p.value))
+  }
+}
+
+#p values will be adjusted using "BH"
+df$fisher.p.adj <- p.adjust(df$fisher.p.value, method = "BH")
+df$chisq.p.adj <- p.adjust(df$chisq.p.value, method = "BH")
+
+#factor some variables for subsequent plotting
+df$treatment <- factor(df$treatment, levels = c("IgG","Spt","PD1"))
+df$cluster <- factor(df$cluster, levels = levels(pan8$seurat_clusters))
+
+p_fisher <- df %>% #plot of Fisher's Exact test results
+  ggplot(aes(x = treatment, 
+             y = cluster, 
+             fill = -log10(fisher.p.adj))) + 
+    geom_tile() +
+    geom_text(aes(label = round(-log10(fisher.p.adj), 0))) + #round the adjusted p value
+    scale_fill_distiller(direction = 1, 
+                         palette = "Blues") +
+    theme_minimal() +
+    theme(text = element_text(size = 15),
+          panel.grid = element_blank(),
+          axis.title = element_blank(),
+          legend.position = "top") +
+    guides(fill = guide_colorbar(ticks.colour = NA)) +
+    labs(title = "CD8+ T cells in pancreas\n(Fisher's Exact test)", 
+         fill = expression(-~log[10]~(p~adjusted)))
+
+p_chisq <- df %>% #plot of Chi-squared results
+  ggplot(aes(x = treatment, 
+             y = cluster, 
+             fill = -log10(chisq.p.adj))) + 
+    geom_tile() +
+    geom_text(aes(label = round(-log10(chisq.p.adj), 0))) +
+    scale_fill_distiller(direction = 1, 
+                         palette = "Blues") +
+    theme_minimal() +
+    theme(text = element_text(size=15),
+          panel.grid = element_blank(),
+          axis.title = element_blank(),
+          legend.position = "top",
+          axis.text.y = element_blank()) + 
+    guides(fill = guide_colorbar(ticks.colour = NA)) +
+    labs(title = "CD8+ T cells in pancreas\n(Chi-squared p values)", 
+         fill = expression(-~log[10]~(p~adjusted)))
+
+#melt the raw data to plot
+tbl <- tbl %>% 
+        reshape2::melt(id.vars = "seurat_clusters")
+colnames(tbl) <- c("cluster", "treatment", "cell_num") #meaningful column names
+
+#plot the raw numbers
+p_raw <- tbl %>% 
+          ggplot(aes(x = treatment, 
+                     y = cluster, 
+                     fill = cell_num)) + 
+            geom_tile() +
+            geom_text(aes(label = cell_num)) +
+            scale_fill_distiller(direction = 1, 
+                                 palette = "Purples") +
+            theme_minimal() +
+            theme(text = element_text(size=15),
+                  panel.grid = element_blank(),
+                  axis.title = element_blank(),
+                  legend.position = "top",) +
+            guides(fill = guide_colorbar(ticks.colour = NA)) +
+            labs(title = "Total CD8+ T cells in pancreas\n", 
+                fill = "T cells in\ncluster")
+
+grid.arrange(p_raw, p_fisher, p_chisq, ncol = 3, widths = c(1.5,1.5,1))
+```
