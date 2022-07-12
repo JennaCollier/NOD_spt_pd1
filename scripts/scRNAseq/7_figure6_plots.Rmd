@@ -1,0 +1,360 @@
+---
+title: "7_figure6_plots"
+output: rmarkdown::github_document
+date: '2022-07-10'
+---
+
+The purpose of this figure is to show that circulating CD4+ and CD8+ T cells in the blood that have matching TCRs to cells in the pancreas show unique transcriptional features in checkpoint-induced T1D compared to spontaneous T1D
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+```
+
+```{r libraries, message = FALSE, warning = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(Seurat, quietly = T) #scRNA-seq analysis
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(rstatix, quietly = T) #adding p values to plots
+require(ggprism, quietly = T) #adding p values to plots
+require(ggsci, quirtly = T) #IGV color palette
+require(patchwork, quietly = T) #adding p values to plots
+require(magrittr, quietly = T) #adding p values to plots
+require(gridExtra, quietly = T) #display multiple plots
+require(ggrepel, quietly = T) #labels for plots
+require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
+require(viridis, quietly = T) #viridis color palettes
+require(readxl, quietly = T) #reading Excel files
+require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
+source("scripts/utils.R") #custom color palettes and other functions
+set.seed(1) #set a seed for reproducibility
+```
+
+```{r read in Seurats}
+seurat_integrated <- saveRDS("objects/seurat_integrated_clustered.rds")
+pan4 <- readRDS("objects/seurat_cd4_panonly_clustered.rds")
+pan8 <- readRDS("objects/seurat_cd8_panonly_clustered.rds")
+```
+
+First, UMAPs showing the distribution of PM and non-PM T cells in the blood will be plotted, followed by some pie charts illustrating the distribution of clusters for each group.
+```{r UMAPs of shared/non-shared blood}
+p_blood_shared <- seurat_integrated@meta.data %>% 
+                    filter(tissue == "blood" & !is.na(clonotype_shared_tissues)) %>%
+                    ggplot(aes(x = allcells_UMAP_1, 
+                               y = allcells_UMAP_2, 
+                               color = seurat_clusters)) + 
+                    geom_point(data = seurat_integrated@meta.data %>% 
+                                 dplyr::select(-clonotype_shared_tissues), 
+                               shape = 16, 
+                               color = "grey90") +
+                    geom_point(shape = 16, 
+                               alpha = 0.3) +
+                    theme_minimal() +
+                    theme(axis.title = element_blank(),
+                          axis.text = element_blank(),
+                          panel.grid = element_blank(),
+                          text = element_text(size = 15),
+                          legend.position = "none") +
+                    labs(color=NULL,
+                         title = "T cells in blood: Clonotypes shared with pancreas") +
+                    scale_color_manual(values = custom_colors("clusters")) +
+                    guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                                  size = 5, 
+                                                                  shape = 19))) +
+                  facet_grid(rows = vars(clonotype_shared_tissues), 
+                             cols = vars(treatment))
+p_blood_shared
+
+#PIES OF CLUSTERS IN EACH GROUP
+p_cd8_blood_pie <- seurat_integrated@meta.data %>% 
+                    filter(tissue == "blood" & !is.na(clonotype_shared_tissues) & celltype == "CD8") %>%
+                    group_by(treatment,clonotype_shared_tissues,
+                             seurat_clusters) %>% 
+                    tally() %>% 
+                    group_by(treatment, clonotype_shared_tissues) %>% 
+                    mutate(prcnt = n*100/sum(n),
+                           csum = rev(cumsum(rev(prcnt))),  #get the position for the labels
+                           pos = prcnt/2 + lead(csum, 1),
+                           pos = if_else(is.na(pos), prcnt/2, pos)) %>%
+                    ggplot(aes(x = "", 
+                               y = prcnt, 
+                               fill = seurat_clusters)) + # pct used here so slices add to 100
+                    geom_bar(stat="identity", width=1) +
+                    coord_polar("y", 
+                                start = 0) +
+                    #geom_text(aes(label = paste0(round(prcnt, 0), "%")), position = position_stack(vjust = 0.5)) +
+                    facet_grid(rows = vars(clonotype_shared_tissues), 
+                               cols = vars(treatment)) +
+                    theme_void() +
+                    theme(legend.position = "none",
+                          text = element_text(size = 15)) +
+                    labs(title = "CD8+ T cells in blood") +
+                    geom_label_repel(aes(y = pos, 
+                                         label = paste0(round(prcnt, 0), "%")),
+                                         size = 4.5, 
+                                         nudge_x = 0.1, 
+                                         show.legend = FALSE) +
+                    scale_fill_manual(values = custom_colors("clusters"))
+p_cd4_blood_pie <- seurat_integrated@meta.data %>% 
+                    filter(tissue == "blood" & !is.na(clonotype_shared_tissues) & celltype %in% c("Tcon","Treg")) %>%
+                    group_by(treatment,clonotype_shared_tissues,
+                             seurat_clusters) %>% 
+                    tally() %>% 
+                    group_by(treatment, clonotype_shared_tissues) %>% 
+                    mutate(prcnt = n*100/sum(n),
+                           csum = rev(cumsum(rev(prcnt))),  #get the position for the labels
+                           pos = prcnt/2 + lead(csum, 1),
+                           pos = if_else(is.na(pos), prcnt/2, pos)) %>%
+                    ggplot(aes(x = "", 
+                               y = prcnt, 
+                               fill = seurat_clusters)) + # pct used here so slices add to 100
+                    geom_bar(stat="identity", width=1) +
+                    coord_polar("y", 
+                                start = 0) +
+                    #geom_text(aes(label = paste0(round(prcnt, 0), "%")), position = position_stack(vjust = 0.5)) +
+                    facet_grid(rows = vars(clonotype_shared_tissues), 
+                               cols = vars(treatment)) +
+                    theme_void() +
+                    theme(legend.position = "none",
+                          text = element_text(size = 15)) +
+                    labs(title = "CD4+ T cells in blood") +
+                    geom_label_repel(aes(y = pos, 
+                                         label = paste0(round(prcnt, 0), "%")),
+                                         size = 4.5, 
+                                         nudge_x = 0.1, 
+                                         show.legend = FALSE) +
+                    scale_fill_manual(values = custom_colors("clusters"))
+grid.arrange(p_cd8_blood_pie, p_cd4_blood_pie, nrow = 2)
+```
+
+Show the top 50 clonotypes as a percentage of TCRs detected in the pancreas as a cumulative sum and also the clone sizes for the different treatment groups.
+```{r top 50 clonotypes and clone size}
+#TOP 50 CLONOTYPES IN BLOOD
+#CD8
+cumulative_sums <- seurat_integrated@meta.data %>% 
+                    filter(clonotype_tissue_groups %in% c("blood&pancreas","pancreas") & celltype == "CD8") %>%
+                      group_by(treatment, clonotype_id, clonotype_tissue_groups) %>% 
+                      tally() %>% 
+                      group_by(treatment) %>% 
+                      mutate(prcnt = n*100/sum(n)) %>% 
+                      group_by(treatment, clonotype_tissue_groups) %>% 
+                      arrange(treatment, clonotype_tissue_groups, desc(prcnt)) %>% 
+                      mutate(cs = cumsum(prcnt))
+
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = cumulative_sums$clonotype_id) #orders the clonotypes on x axis
+
+p_cd8_bloodPM_top50_clonos <- cumulative_sums %>% 
+                              group_by(treatment, clonotype_tissue_groups) %>% 
+                              slice_head(n = 50) %>% 
+                              ggplot(aes(x = clonotype_id, 
+                                         y = cs, 
+                                         color = treatment)) + 
+                              geom_point() + 
+                              geom_segment(aes(xend = clonotype_id, 
+                                               yend = cs, 
+                                               x = clonotype_id, 
+                                               y = 0, 
+                                               color = treatment)) + 
+                              scale_color_manual(values = custom_colors("treatments")) +
+                              scale_y_continuous(expand = c(0, 0)) +
+                              theme_minimal() +
+                              theme(panel.grid = element_blank(),
+                                    panel.spacing.x = unit(0, "lines"),
+                                    text = element_text(size = 15),
+                                    axis.text.x = element_blank(),
+                                    panel.border = element_rect(colour = "black", 
+                                                                fill = NA, 
+                                                                size = 1),
+                                    legend.position = "none") +
+                              labs(x = "Top 50 clonotypes", 
+                                   y = "Cumulative % CD8 TCRs",
+                                   title = "CD8+ T cells in pancreas") +
+                              facet_grid(treatment ~ clonotype_tissue_groups, scales = "free_x", ncol = 2)
+
+#TCON
+cumulative_sums <- seurat_integrated@meta.data %>% 
+                    filter(clonotype_tissue_groups %in% c("blood&pancreas","pancreas") & celltype == "Tcon") %>%
+                      group_by(treatment, clonotype_id, clonotype_tissue_groups) %>% 
+                      tally() %>% 
+                      group_by(treatment) %>% 
+                      mutate(prcnt = n*100/sum(n)) %>% 
+                      group_by(treatment, clonotype_tissue_groups) %>% 
+                      arrange(treatment, clonotype_tissue_groups, desc(prcnt)) %>% 
+                      mutate(cs = cumsum(prcnt))
+
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = cumulative_sums$clonotype_id) #orders the clonotypes on x axis
+
+p_tcon_bloodPM_top50_clonos <- cumulative_sums %>% 
+                              group_by(treatment, clonotype_tissue_groups) %>% 
+                              slice_head(n = 50) %>% 
+                              ggplot(aes(x = clonotype_id, 
+                                         y = cs, 
+                                         color = treatment)) + 
+                              geom_point() + 
+                              geom_segment(aes(xend = clonotype_id, 
+                                               yend = cs, 
+                                               x = clonotype_id, 
+                                               y = 0, 
+                                               color = treatment)) + 
+                              scale_color_manual(values = custom_colors("treatments")) +
+                              scale_y_continuous(expand = c(0, 0)) +
+                              theme_minimal() +
+                              theme(panel.grid = element_blank(),
+                                    panel.spacing.x = unit(0, "lines"),
+                                    text = element_text(size = 15),
+                                    axis.text.x = element_blank(),
+                                    panel.border = element_rect(colour = "black", 
+                                                                fill = NA, 
+                                                                size = 1),
+                                    legend.position = "none") +
+                              labs(x = "Top 50 clonotypes", 
+                                   y = "Cumulative % Tcon TCRs",
+                                   title = "Tcon in pancreas") +
+                              facet_wrap(treatment ~ clonotype_tissue_groups, scales = "free_x", ncol = 2)
+
+#TCON
+cumulative_sums <- seurat_integrated@meta.data %>% 
+                    filter(clonotype_tissue_groups %in% c("blood&pancreas","pancreas") & celltype == "Treg") %>%
+                      group_by(treatment, clonotype_id, clonotype_tissue_groups) %>% 
+                      tally() %>% 
+                      group_by(treatment) %>% 
+                      mutate(prcnt = n*100/sum(n)) %>% 
+                      group_by(treatment, clonotype_tissue_groups) %>% 
+                      arrange(treatment, clonotype_tissue_groups, desc(prcnt)) %>% 
+                      mutate(cs = cumsum(prcnt))
+
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = cumulative_sums$clonotype_id) #orders the clonotypes on x axis
+
+p_treg_bloodPM_top50_clonos <- cumulative_sums %>% 
+                              group_by(treatment, clonotype_tissue_groups) %>% 
+                              slice_head(n = 50) %>% 
+                              ggplot(aes(x = clonotype_id, 
+                                         y = cs, 
+                                         color = treatment)) + 
+                              geom_point() + 
+                              geom_segment(aes(xend = clonotype_id, 
+                                               yend = cs, 
+                                               x = clonotype_id, 
+                                               y = 0, 
+                                               color = treatment)) + 
+                              scale_color_manual(values = custom_colors("treatments")) +
+                              scale_y_continuous(expand = c(0, 0)) +
+                              theme_minimal() +
+                              theme(panel.grid = element_blank(),
+                                    panel.spacing.x = unit(0, "lines"),
+                                    text = element_text(size = 15),
+                                    axis.text.x = element_blank(),
+                                    panel.border = element_rect(colour = "black", 
+                                                                fill = NA, 
+                                                                size = 1),
+                                    legend.position = "none") +
+                              labs(x = "Top 50 clonotypes", 
+                                   y = "Cumulative % Treg TCRs",
+                                   title = "Treg in pancreas") +
+                              facet_wrap(treatment ~ clonotype_tissue_groups, scales = "free_x", ncol = 2)
+
+grid.arrange(p_cd8_bloodPM_top50_clonos, p_tcon_bloodPM_top50_clonos, p_treg_bloodPM_top50_clonos, nrow = 1)
+
+#boxplot of clone size
+stat.test <- data.frame(seurat_integrated@meta.data %>%
+                          filter(tissue == "pancreas" & !is.na(clonotype_shared_tissues)) %>%
+                          group_by(treatment, clonotype_shared_tissues, clonotype_id) %>%
+                          tally() %>%
+                          group_by(treatment) %>%
+                          wilcox_test(n ~ clonotype_shared_tissues) %>% 
+                          add_xy_position() %>%
+                          mutate(y.position = log10(y.position + 1)))
+
+seurat_integrated@meta.data %>%
+    filter(tissue == "pancreas" & !is.na(clonotype_shared_tissues)) %>%
+    group_by(celltype, treatment, clonotype_shared_tissues, clonotype_id) %>%
+    tally() %>%
+    ggplot() + 
+    geom_boxplot(aes(x = treatment, 
+               y = log10(n+1), 
+               fill = clonotype_shared_tissues,
+               color = clonotype_shared_tissues),
+               outlier.shape = NA, 
+               alpha = 0.5,
+               position = position_dodge(0.9)) +
+    geom_point(aes(x = treatment, 
+               y = log10(n+1), 
+               fill = clonotype_shared_tissues,
+               color = clonotype_shared_tissues),
+               position = position_jitterdodge(dodge.width = 0.9,
+                                               jitter.width = 0.8),
+               alpha = 0.1) +
+    scale_fill_manual(values = custom_colors("pm")) +
+    scale_color_manual(values = custom_colors("pm")) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          axis.title.x = element_blank(),
+          text = element_text(size = 15),
+          legend.position = "top",
+          panel.border = element_rect(colour = "black", fill = NA, size = 1)) +
+    labs(y = expression(log[10](clone~size~+1)),
+         color = "Pancreas matching (PM)",
+         fill = "Pancreas matching (PM)",
+         title = "T cells in pancreas (unique clonotypes)") +
+    facet_wrap(~celltype, nrow = 1)
+
+#DIVERSITY ANALYSIS
+# tcrtypecounts <- rbind(data.frame(pan8@meta.data %>% dplyr::select(treatment, mouse_id, clonotype_id, clonotype_count)))
+# corner(tcrtypecounts)
+# 
+# tcrtypecounts <- tcrtypecounts %>% filter(!is.na(clonotype_id)) %>% cast(treatment + mouse_id  ~ clonotype_id)
+# corner(tcrtypecounts)
+# 
+# totalN <- tcrtypecounts %>% select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+# df <- sapply(tcrtypecounts %>% select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+# corner(df)
+# numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+# 
+# # Calculate simpson index
+# diversities <- data.frame(tcrtypecounts %>% 
+#                             dplyr::select(c(treatment, mouse_id)), 
+#                           celltype = "CD8", 
+#                           simpson = totalN*(totalN - 1) / numerator)
+# 
+# diversities$treatment <- factor(diversities$treatment, levels = c("IgG", "Spt", "PD1")) #factor the pathologies
+# 
+# stat.test <- data.frame(diversities %>% 
+#                             mutate(simpson = ifelse(simpson == Inf, NA, simpson)) %>% 
+#                             wilcox_test(simpson ~ treatment) %>% 
+#                             add_xy_position())
+# 
+# diversities %>%
+#     ggplot(aes(x = treatment, 
+#                y = simpson,
+#                fill = treatment, 
+#                color = treatment)) + 
+#     geom_violin(alpha = 0.5,
+#                 adjust = 1,
+#                 scale = "width",
+#                 trim = F) + 
+#     geom_point(size = 5) +
+#     labs(y = "Simpson index") +
+#     theme_minimal() +
+#     theme(panel.grid = element_blank(),
+#           text = element_text(size = 15),
+#           panel.border = element_rect(colour = "black", 
+#                                       fill=NA, 
+#                                       size=1),
+#           legend.position = "bottom") +
+#     labs(title = "CD8 T cells in pancreas") +
+#     scale_fill_manual(values = custom_colors("treatments")) +
+#     scale_color_manual(values = custom_colors("treatments")) +
+#     add_pvalue(stat.test,
+#                inherit.aes = F,
+#                label = "p.adj.signif",
+#                 y.position = "y.position") 
+
+```
+
+DE genes volcano plot
+
