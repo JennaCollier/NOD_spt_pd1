@@ -546,13 +546,40 @@ seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 Modify the celltype of the CD4+ T cells to distinguish Tcon and Treg based on the Seurat clusters for later analyses:
 ```{r distinguish Tcon and Treg}
 new_metadata <- seurat_integrated@meta.data %>% 
-                  mutate(celltype = ifelse(seurat_clusters %in% c("Treg_Tigit_lo","Treg_Tigit_hi"), "Treg", paste0(celltype))) %>% 
-                  select(celltype)
+                  mutate(cd4_or_cd8 = paste0(celltype), 
+                         celltype = ifelse(seurat_clusters %in% c("Treg_Tigit_lo","Treg_Tigit_hi"), "Treg", paste0(celltype))) %>% 
+                  select(cd4_or_cd8, celltype)
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 
 #add to cd8 and cd4 separate Seurats
 cd8 <- AddMetaData(cd8, new_metadata)
 cd4 <- AddMetaData(cd4, new_metadata)
+```
+
+```{r identify tissue shared clonotypes}
+shared_clonotypes <- seurat_integrated@meta.data %>% 
+  filter(!is.na(clonotype_id)) %>%
+  group_by(cd4_or_cd8, clonotype_id, tissue) %>% 
+  tally() %>% 
+  summarize(clonotype_tissue_groups = paste(tissue, collapse='&')) %>% 
+  arrange(desc(clonotype_tissue_groups)) %>% 
+  data.frame()
+
+shared_clonotypes <- setNames(as.character(shared_clonotypes$clonotype_tissue_groups), shared_clonotypes$clonotype_id)
+
+new_metadata <- seurat_integrated@meta.data %>% 
+  rownames_to_column('barcode') %>%
+  mutate(clonotype_tissue_groups = shared_clonotypes[clonotype_id]) %>%
+  column_to_rownames('barcode') %>%
+  dplyr::select(tissue, clonotype_tissue_groups) 
+
+new_metadata <- new_metadata %>%
+                  mutate(tissue_shared = case_when(is.na(clonotype_tissue_groups) ~ NA_character_,
+                                                   tissue == "blood" & clonotype_tissue_groups %in% c("pancreas&pLN&blood", "pancreas&blood") ~ "blood shared",
+                                                   tissue == "pLN"  & clonotype_tissue_groups %in% c("pancreas&pLN&blood", "pancreas&pLN") ~ "pLN shared",
+                                                   tissue == "pancreas"  & clonotype_tissue_groups %in% c("pancreas&pLN&blood", "pancreas&pLN", "pancreas&blood") ~ "pancreas shared",
+                                                   TRUE ~ "non shared"))
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 ```
 
 Finally, save the Seurat objects:
