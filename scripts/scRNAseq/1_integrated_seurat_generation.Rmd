@@ -507,7 +507,7 @@ DimPlot(seurat_integrated, label = T) + theme(legend.position = "none")
 ```
 
 Now that the CD4 and CD8 T cells have been identified, next fix the clonotype designations so that only CD8 or CD4 T cell clones are distinguished. Note that **celltype** is now considered:
-```{r clonotype and tcrtype metadata}
+```{r fix clonotype metadata}
 ## CLONOTYPE ID
 new_metadata <- seurat_integrated@meta.data %>% 
   rownames_to_column('barcode') %>%
@@ -528,6 +528,19 @@ seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
 #add the new clonotype_ids split by celltype (CD4 or CD8) to cd8 and cd4 separate Seurats
 cd8 <- AddMetaData(cd8, new_metadata)
 cd4 <- AddMetaData(cd4, new_metadata)
+```
+
+Factor some additional variables to order them properly:
+```{r factor additional variables}
+seurat_integrated$treatment <- factor(seurat_integrated$treatment, levels = c("IgG", "Spt", "PD1"))
+cd8$treatment <- factor(cd8$treatment, levels = c("IgG", "Spt", "PD1"))
+cd4$treatment <- factor(cd4$treatment, levels = c("IgG", "Spt", "PD1"))
+```
+
+As a measure of exhaustion, the number of co-inhibitory receptors expressed simultaneously in the same cell can be counted. This will be added to the metadata:
+```{r coinhibitory receptor count}
+new_metadata <- data.frame(coinh_count = rowSums(as.data.frame(t(as.data.frame(pan8@assays$RNA@data[c("Pdcd1","Havcr2","Ctla4","Lag3","Tigit"),]))) > 0))
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 ```
 
 Modify the celltype of the CD4+ T cells to distinguish Tcon and Treg based on the Seurat clusters for later analyses:
