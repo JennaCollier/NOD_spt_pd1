@@ -578,8 +578,10 @@ new_metadata <- new_metadata %>%
                                                    tissue == "blood" & clonotype_tissue_groups %in% c("pancreas&pLN&blood", "pancreas&blood") ~ "blood shared",
                                                    tissue == "pLN"  & clonotype_tissue_groups %in% c("pancreas&pLN&blood", "pancreas&pLN") ~ "pLN shared",
                                                    tissue == "pancreas"  & clonotype_tissue_groups %in% c("pancreas&pLN&blood", "pancreas&pLN", "pancreas&blood") ~ "pancreas shared",
-                                                   TRUE ~ "non shared"))
+                                                   tissue == "pancreas"  & clonotype_tissue_groups == "pancreas" ~ "pancreas non shared",
+                                                   tissue != "pancreas"  & clonotype_tissue_groups %in% c("pLN&blood", "pLN", "blood") ~ "periphery non shared"))
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+seurat_integrated$tissue_shared <- factor(seurat_integrated$tissue_shared, levels = c("pancreas shared", "pancreas non shared", "pLN shared", "blood shared", "periphery non shared"))
 ```
 
 Finally, save the Seurat objects:
