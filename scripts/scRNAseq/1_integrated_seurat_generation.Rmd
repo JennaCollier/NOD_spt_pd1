@@ -666,6 +666,13 @@ gene_signatures <- c("SLEC1",
                      "lag3act61")
 ```
 
+Add the NRP-v7 tetramer staining to the Seurat meta data for ease of plotting.
+```{r }
+new_metadata <- as.data.frame(t(seurat_integrated@assays$FB@data))
+colnames(new_metadata) <- "NRPv7_TotalSeqC"
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+```
+
 Finally, add the new metadata from the integrated Seurat back to the separate Seurats of the CD4 and CD8 T cells and then save.
 ```{r save seurat object}
 new_metadata <- seurat_integrated@meta.data #take all the metadata from the integrated Seurat and add to the subsetted objects
