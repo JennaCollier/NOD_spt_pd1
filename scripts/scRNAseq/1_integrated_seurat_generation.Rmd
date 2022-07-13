@@ -570,9 +570,15 @@ new_metadata <- new_metadata %>%
                                                    tissue == "pLN"  & clonotype_tissue_groups %in% c("pLN&blood&pancreas", "pLN&pancreas") ~ "pLN PM",
                                                    tissue == "pancreas"  & clonotype_tissue_groups %in% c("pLN&blood&pancreas", "pLN&pancreas", "blood&pancreas") ~ "pancreas PM",
                                                    tissue == "pancreas"  & clonotype_tissue_groups == "pancreas" ~ "pancreas non-PM",
-                                                   tissue != "pancreas"  & clonotype_tissue_groups %in% c("pLN&blood", "pLN", "blood") ~ "periphery non-PM"))
+                                                   tissue == "blood"  & clonotype_tissue_groups %in% c("pLN&blood", "blood") ~ "blood non-PM",
+                                                   tissue == "pLN"  & clonotype_tissue_groups %in% c("pLN&blood", "blood") ~ "pLN non-PM"),
+                         pancreas_matching = case_when(is.na(clonotype_tissue_groups) ~ NA_character_,
+                                                   clonotype_tissue_groups %in% c("pLN&blood&pancreas", "blood&pancreas", "pLN&pancreas") ~ "PM",
+                                                   TRUE ~ "non-PM")) %>%
+  dplyr::select(clonotype_shared_tissues, pancreas_matching)
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-seurat_integrated$clonotype_shared_tissues <- factor(seurat_integrated$clonotype_shared_tissues, levels = c("pancreas PM", "pancreas non-PM", "pLN PM", "blood PM", "periphery non-PM"))
+seurat_integrated$clonotype_shared_tissues <- factor(seurat_integrated$clonotype_shared_tissues, levels = c("pancreas PM", "pancreas non-PM", "pLN PM", "blood PM", "blood non-PM", "pLN non-PM"))
+seurat_integrated$pancreas_matching <- factor(seurat_integrated$pancreas_matching, levels = c("non-PM", "PM"))
 ```
 
 Next, gene signatures will be added to the Seurat to plot gene module scores. These gene signatures were gathered from various papers and also msigdb:

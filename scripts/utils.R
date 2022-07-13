@@ -16,8 +16,8 @@ custom_colors <- function(pal) {
   }
   
   if (pal == "pm") {
-    return(c("pancreas PM" = "#1f78b4",
-              "pancreas non-PM" = "#33a02c"))
+    return(c("PM" = "#1f78b4",
+              "non-PM" = "#33a02c"))
   }
   
   if (pal == "celltypes") {
