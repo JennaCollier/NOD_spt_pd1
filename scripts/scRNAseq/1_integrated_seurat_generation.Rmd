@@ -614,6 +614,14 @@ seurat_integrated <- AddModuleScore(seurat_integrated, features = list(m_df %>%
                                              filter(gs_name == "KAECH_DAY15_EFF_VS_MEMORY_CD8_TCELL_UP") %>% 
                                              dplyr::select(gene_symbol) %>% pull()), 
                       name = "KAECH_DAY15_EFF_VS_MEMORY_CD8_TCELL_UP", assay = "RNA")
+seurat_integrated <- AddModuleScore(seurat_integrated, features = list(m_df %>% 
+                                             filter(gs_name == "KAECH_DAY15_EFF_VS_MEMORY_CD8_TCELL_DN") %>% 
+                                             dplyr::select(gene_symbol) %>% pull()), 
+                      name = "KAECH_DAY15_EFF_VS_MEMORY_CD8_TCELL_DN", assay = "RNA")
+seurat_integrated <- AddModuleScore(seurat_integrated, features = list(m_df %>% 
+                                             filter(gs_name == "GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN") %>% 
+                                             dplyr::select(gene_symbol) %>% pull()), 
+                      name = "GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN", assay = "RNA")
 
 seurat_integrated <- AddModuleScore(seurat_integrated, features = list(prog_exh), name = "Miller2019_progenitor_exh", assay = "RNA")
 seurat_integrated <- AddModuleScore(seurat_integrated, features = list(term_exh), name = "Miller2019_terminally_exh", assay = "RNA")

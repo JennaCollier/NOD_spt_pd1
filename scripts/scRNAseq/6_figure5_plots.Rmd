@@ -150,7 +150,7 @@ grid.arrange(p_pan8_shared, p_pan4_shared, nrow = 2)
 
 #STACKED BAR PLOT OF SHARED/NON-SHARED
 p_shared_per_cluster <- seurat_integrated@meta.data %>% 
-                          filter(tissue == "pancreas") %>%
+                          filter(tissue == "pancreas" & !is.na(clonotype_shared_tissues)) %>%
                             ggplot(aes(x = factor(seurat_clusters, 
                                                 levels = rev(levels(seurat_integrated$seurat_clusters))), 
                                                 fill = clonotype_shared_tissues)) + 
