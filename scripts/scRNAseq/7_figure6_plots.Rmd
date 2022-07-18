@@ -612,35 +612,46 @@ seurat_integrated@meta.data %>%
   scale_size_continuous(range = c(2,10))
 ```
 
-DE genes volcano plot within pancreas matching cells
-```{r volcano plot of pancreas-only differences PD1 and Spt}
+DE genes volcano plot within pancreas matching cells in blood:
+```{r volcano plot of PM T cells in blood}
 cutoff <- 0.25 #set a cutoff for DE gene expression
 ident1 <- "PD1"
 ident2 <- "Spt"
 
+Idents(seurat_integrated) <- seurat_integrated$tissue
+seurat_bld <- subset(seurat_integrated, idents = "blood") #subset on T cells in blood
+Idents(seurat_bld) <- seurat_bld$pancreas_matching
+seurat_bld <- subset(seurat_bld, idents = "PM") #subset on PM T cells only
+Idents(seurat_bld) <- seurat_bld$celltype
 
-
-Idents(pan8) <- pan8$treatment
-volcanodata <- FindMarkers(pan8, #define the table of DE genes
-                       ident.1 = ident1,
-                       ident.2 = ident2, 
-                       verbose = F,
-                       only.pos = F, 
-                       logfc.threshold = cutoff, 
-                       assay = "RNA")
-volcanodata$gene <- rownames(volcanodata) #rownames are genes
-corner(volcanodata)
-
-#assess significance
-volcanodata$DE <- 'None' #set all significance to none
-volcanodata[which(volcanodata$p_val_adj < 0.05 & volcanodata$avg_log2FC >= cutoff),"DE"] <- ident1 #positive avg_log2FC are associated with ident.1
-volcanodata[which(volcanodata$p_val_adj < 0.05 & volcanodata$avg_log2FC <= -cutoff),"DE"] <- ident2 #negative avg_log2FC are associated with ident.2
+volcanodata <- list()
+allvolcano <- data.frame()
+for (current_cell in c("CD8", "Tcon", "Treg")) {
+  volcanodata[[current_cell]] <- FindMarkers(seurat_bld, #define the table of DE genes
+                                     ident.1 = ident1,
+                                     ident.2 = ident2, 
+                                     verbose = F,
+                                     group.by = "treatment",
+                                     subset.ident = current_cell,
+                                     only.pos = F, 
+                                     logfc.threshold = cutoff, 
+                                     assay = "RNA") %>% 
+                                  rownames_to_column("gene") %>%
+                                  mutate(celltype = current_cell)
+  #assess significance
+  volcanodata[[current_cell]]$DE <- "None"
+  volcanodata[[current_cell]][which(volcanodata[[current_cell]]$p_val_adj < 0.05 & 
+                                      volcanodata[[current_cell]]$avg_log2FC >= cutoff), "DE"] <- ident1 #positive avg_log2FC are associated with ident.1
+  volcanodata[[current_cell]][which(volcanodata[[current_cell]]$p_val_adj < 0.05 & 
+                                      volcanodata[[current_cell]]$avg_log2FC <= -cutoff), "DE"] <- ident2 #negative avg_log2FC are associated with ident.2
+  allvolcano <- rbind(allvolcano, volcanodata[[current_cell]])
+}
 
 #label individual genes
-delabels <- volcanodata %>% filter(DE != 'None') %>% group_by(DE) #only label significant genes
+delabels <- allvolcano %>% filter(DE != 'None') #only label significant genes
 delabels <- delabels %>% filter(gene %in% goi) #filter based on genes of interest
 
-volcanodata %>%
+allvolcano %>%
     ggplot(aes(x = avg_log2FC,
                y = -log10(p_val_adj))) + 
         geom_hline(yintercept = -log10(0.05),
@@ -657,15 +668,17 @@ volcanodata %>%
                    shape = 16) +
         scale_color_manual(values = c("None" = "grey70",
                                       custom_colors("treatments"))) +
-        scale_y_continuous(limits = c(0,125)) +
+        scale_y_continuous(limits = c(0,10)) +
         theme_minimal() +
         theme(panel.grid = element_blank(),
               text = element_text(size = 15),
+              panel.border = element_rect(fill = NA, color = "black"),
               axis.text = element_text(), 
+              panel.spacing = unit(0, "lines"),
               axis.title = element_text()) +
         labs(x = paste("Average Log2 Fold Change (",ident1,"/",ident2,")"),
              y = expression(-log[10]~(Adjusted~p~Value)),
-             title="CD8+ T cells in pancreas of Spt") +
+             title="Pancreas-matching T cells in blood") +
         geom_label_repel(data = delabels,
                          aes(x = avg_log2FC,
                              y = -log10(p_val_adj),
@@ -676,5 +689,94 @@ volcanodata %>%
                          na.rm = TRUE,
                          fill = alpha(c("white"), 0.8), 
                          size=7, 
-                         max.overlaps = 50)
+                         max.overlaps = 50) +
+  facet_wrap(~celltype)
 ```
+
+DE genes volcano plot between pancreas-matching and non-matching T cells in the blood between different treatment groups.
+```{r volcano plot of PM T cells in blood}
+cutoff <- 0.25 #set a cutoff for DE gene expression
+ident1 <- "PM"
+ident2 <- "non-PM"
+
+Idents(seurat_integrated) <- seurat_integrated$tissue
+seurat_bld <- subset(seurat_integrated, idents = "blood") #subset on T cells in blood
+Idents(seurat_bld) <- seurat_bld$treatment
+
+allvolcano <- data.frame()
+for (current_treatment in c("IgG","Spt","PD1")) {
+  seurat_tmp <- subset(seurat_bld, idents = current_treatment) #subset on PM T cells only
+  Idents(seurat_tmp) <- seurat_tmp$celltype
+  
+  volcanodata <- list()
+  for (current_cell in c("CD8", "Tcon", "Treg")) {
+    volcanodata[[current_cell]] <- FindMarkers(seurat_tmp, #define the table of DE genes
+                                       ident.1 = ident1,
+                                       ident.2 = ident2, 
+                                       verbose = F,
+                                       group.by = "pancreas_matching",
+                                       subset.ident = current_cell,
+                                       only.pos = F, 
+                                       logfc.threshold = cutoff, 
+                                       assay = "RNA") %>% 
+                                    rownames_to_column("gene") %>%
+                                    mutate(celltype = current_cell,
+                                           treatment = current_treatment)
+    #assess significance
+    volcanodata[[current_cell]]$DE <- "None"
+    volcanodata[[current_cell]][which(volcanodata[[current_cell]]$p_val_adj < 0.05 & 
+                                        volcanodata[[current_cell]]$avg_log2FC >= cutoff), "DE"] <- ident1 #positive avg_log2FC are associated with ident.1
+    volcanodata[[current_cell]][which(volcanodata[[current_cell]]$p_val_adj < 0.05 & 
+                                        volcanodata[[current_cell]]$avg_log2FC <= -cutoff), "DE"] <- ident2 #negative avg_log2FC are associated with ident.2
+    allvolcano <- rbind(allvolcano, volcanodata[[current_cell]])
+  }
+}
+#label individual genes
+delabels <- allvolcano %>% filter(DE != 'None') #only label significant genes
+delabels <- delabels %>% filter(gene %in% goi) #filter based on genes of interest
+
+allvolcano %>%
+    ggplot(aes(x = avg_log2FC,
+               y = -log10(p_val_adj))) + 
+        geom_hline(yintercept = -log10(0.05),
+                   size = 0.5,
+                   color = "grey90",
+                   alpha = 0.5) + 
+        geom_vline(xintercept = c(-cutoff, cutoff),
+                   size = 0.5,
+                   color = "grey90",
+                   alpha = 0.5) + 
+        geom_point(aes(color = DE),
+                   size = 3,
+                   alpha = 0.5,
+                   shape = 16) +
+        scale_color_manual(values = c("None" = "grey70",
+                                      custom_colors("pm"))) +
+        scale_y_continuous() +
+        theme_minimal() +
+        theme(panel.grid = element_blank(),
+              text = element_text(size = 15),
+              panel.border = element_rect(fill = NA, color = "black"),
+              axis.text = element_text(), 
+              panel.spacing = unit(0, "lines"),
+              axis.title = element_text()) +
+        labs(x = paste("Average Log2 Fold Change (",ident1,"/",ident2,")"),
+             y = expression(-log[10]~(Adjusted~p~Value)),
+             title="T cells in blood") +
+        geom_label_repel(data = delabels,
+                         aes(x = avg_log2FC,
+                             y = -log10(p_val_adj),
+                             label = gene,
+                             color = DE),
+                         label.size = NA,
+                         label.padding = 0.2, 
+                         na.rm = TRUE,
+                         fill = alpha(c("white"), 0.8), 
+                         size = 5, 
+                         max.overlaps = 50) +
+  facet_wrap(celltype ~ treatment)
+```
+
+SAVE data for COMETSC
+
+

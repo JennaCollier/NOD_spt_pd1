@@ -27,6 +27,7 @@ require(tibble, quietly = T) #rownames_to_column function
 require(useful, quietly = T) #corner function to peek at data.frames
 require(viridis, quietly = T) #viridis color palettes
 require(readxl, quietly = T) #reading Excel files
+require(ggseqlogo, quietly = T) #for TCR amino acid analysis of NRP-v7+ T cells 
 source("scripts/utils.R") #custom color palettes and other functions
 set.seed(1) #set a seed for reproducibility
 ```
@@ -112,6 +113,25 @@ p_tissues <- seurat_integrated@meta.data %>%
                                                   shape = 19))) + 
     scale_color_manual(values = custom_colors("tissues"))
 
+#plot the UMAP of NRP-v7+ CD8 T cells
+p_tetramer <- seurat_integrated@meta.data %>% 
+    ggplot(aes(x = allcells_UMAP_1, 
+               y = allcells_UMAP_2, 
+               color = tetramer_specificity)) + 
+    geom_point(shape = 16, alpha = 0.3) +
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = c(0.1,0.1)) +
+    labs(color = NULL,
+         title = "All T cells: NRP-v7 tetramer TotalSeqC") +
+    guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                  size = 5, 
+                                                  shape = 19))) + 
+    scale_color_manual(values = custom_colors("tetramer"))
+
 #plot the UMAP of the different celltypes
 p_celltypes <- seurat_integrated@meta.data %>% 
     ggplot(aes(x = allcells_UMAP_1, 
@@ -173,6 +193,34 @@ p_tissue_per_seurat_cluster <- seurat_integrated@meta.data %>%
     scale_fill_manual(values = custom_colors("tissues")) +
     coord_flip()
 p_tissue_per_seurat_cluster
+```
+
+Plot a bar chart of NRP-v7+ T cells per cluster
+```{r plot NRP-v7 staining}
+p_tetramer_per_cluster <- seurat_integrated@meta.data %>%
+                            filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
+                            mutate(tetramer_tissue = case_when(tetramer_specificity == "NRPv7" & tissue == "pancreas" ~ "pancreas NRPv7",
+                                     tetramer_specificity == "NRPv7" & tissue != "pancreas" ~ "periphery NRPv7",
+                                     TRUE ~ paste0(tetramer_specificity))) %>%
+                            ggplot(aes(x = factor(seurat_clusters, 
+                                                levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
+                                                fill = tetramer_tissue)) + 
+                            geom_bar(stat = "count", 
+                                     position = "fill") + 
+                            scale_x_discrete(expand = c(0, 0)) +
+                            scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                                               expand = c(0, 0)) +
+                            theme_minimal() +
+                            theme(panel.grid = element_blank(),
+                                  text = element_text(size = 15),
+                                  legend.position = "right") +
+                            labs(title = "CD8 T cells", 
+                                 y = "Percent of Seurat Cluster", 
+                                 x = NULL,
+                                 fill = "Tetramer\nspecificity") +
+                            scale_fill_manual(values = c("unknown" = "grey90", "pancreas NRPv7" = "Firebrick", "periphery NRPv7" = "hotpink")) +
+                            coord_flip()
+p_tetramer_per_cluster
 ```
 
 To plot a heatmap of genes of interest across the clusters in Morpheus, the following manually annotated list of genes of interest, **goi**, will be examined. The average expression for each cluster will be determined and this data will be used to plot in Morpheus (Broad institute). The average expression for every gene will be determined to plot the pearson correlations for the Seurat clusters across tissues as well. 
@@ -245,3 +293,4 @@ top20_genes <- seurat_markers %>% group_by(cluster) %>%
 
 write.table(top20_genes, "output/integrated_seurat_FindAllMarkers_top20.tsv", quote = F, sep = "\t", row.names = F)
 ```
+

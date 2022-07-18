@@ -188,7 +188,7 @@ rbind(pan4@meta.data %>%
         mutate(celltype="CD8") %>% 
         cast(treatment+mouse_id+celltype ~ pancreas_matching, value = "n")) %>% 
         group_by(treatment, mouse_id, celltype) %>% 
-        summarize(ratio = `pancreas PM`/`pancreas non-PM`) %>% 
+        summarize(ratio = PM/`non-PM`) %>% 
   ggplot(aes(x = treatment, 
              color = treatment, 
              fill = treatment, 
@@ -204,7 +204,8 @@ rbind(pan4@meta.data %>%
     scale_fill_manual(values = custom_colors("treatments")) +
     facet_wrap(~ celltype, 
                scales = "free_y") +
-    labs(y = "Ratio peripherally\nshared/non-shared")
+    labs(y = "Ratio PM / non-PM",
+         title = "T cells in pancreas")
 ```
 
 Next, examine how clones in various Seurat clusters in the pancreas differ in transcriptional profile with shared clones in other tissues. Two gene signatures are examined and compared:
@@ -227,35 +228,34 @@ colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
 
 p_termexh_clonotypes <- clonotypes_means %>%
-    filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem")) %>% #remove clusters with few cells/not interesting
-    filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
-    ggplot(aes(x = tissue, y = mean)) + 
-    geom_point(alpha = 0.05) +
-    geom_line(aes(group = clonotype_id), alpha = 0.2) + 
-    geom_violin(adjust = 1, 
-                scale = "area",
-                trim=F, 
-                alpha = 0.2, 
-                aes(color = tissue, 
-                    fill = tissue)) +
-    geom_boxplot(outlier.color = NA, 
-                 notch = T, 
-                 width = 0.2,
-                 alpha=0.5, 
-                 fatten=T, 
-                 aes(fill = tissue)) +
-    scale_color_manual(values = custom_colors("tissues")) +
-    scale_fill_manual(values = custom_colors("tissues")) +
-  #scale_y_continuous(limits = c(0,1)) +
-    theme_minimal() +
-    theme(panel.grid = element_blank(),
-          text = element_text(size = 10),
-          axis.title.x = element_blank(),
-          panel.spacing.x = unit(0, "cm"),
-          panel.border = element_rect(color = "black", fill=NA, size=1),
-          legend.position = "none") +
-    labs(y = expression("Terminally-exhausted score (Miller 2019)")) +
-  facet_wrap(~ seurat_clusters, ncol = 4)
+                          filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
+                          ggplot(aes(x = tissue, y = mean)) + 
+                          geom_point(alpha = 0.05) +
+                          geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                          geom_violin(adjust = 1, 
+                                      scale = "area",
+                                      trim=F, 
+                                      alpha = 0.2, 
+                                      aes(color = tissue, 
+                                          fill = tissue)) +
+                          geom_boxplot(outlier.color = NA, 
+                                       notch = T, 
+                                       width = 0.2,
+                                       alpha=0.5, 
+                                       fatten=T, 
+                                       aes(fill = tissue)) +
+                          scale_color_manual(values = custom_colors("tissues")) +
+                          scale_fill_manual(values = custom_colors("tissues")) +
+                        #scale_y_continuous(limits = c(0,1)) +
+                          theme_minimal() +
+                          theme(panel.grid = element_blank(),
+                                text = element_text(size = 10),
+                                axis.title.x = element_blank(),
+                                panel.spacing.x = unit(0, "cm"),
+                                panel.border = element_rect(color = "black", fill=NA, size=1),
+                                legend.position = "none") +
+                          labs(y = expression("Terminally-exhausted score (Miller 2019)")) +
+                        facet_wrap(~ seurat_clusters, ncol = 5)
 
 clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
                               filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas") %>% 
@@ -274,35 +274,34 @@ colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
 
 p_eff_clonotypes <- clonotypes_means %>%
-    filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem")) %>% #remove clusters with few cells/not interesting
-    filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
-    ggplot(aes(x = tissue, y = mean)) + 
-    geom_point(alpha = 0.05) +
-    geom_line(aes(group = clonotype_id), alpha = 0.2) + 
-    geom_violin(adjust = 1, 
-                scale = "area",
-                trim=F, 
-                alpha = 0.2, 
-                aes(color = tissue, 
-                    fill = tissue)) +
-    geom_boxplot(outlier.color = NA, 
-                 notch = T, 
-                 width = 0.2,
-                 alpha=0.5, 
-                 fatten=T, 
-                 aes(fill = tissue)) +
-    scale_color_manual(values = custom_colors("tissues")) +
-    scale_fill_manual(values = custom_colors("tissues")) +
-  #scale_y_continuous(limits = c(0,1)) +
-    theme_minimal() +
-    theme(panel.grid = element_blank(),
-          text = element_text(size = 10),
-          axis.title.x = element_blank(),
-          panel.spacing.x = unit(0, "cm"),
-          panel.border = element_rect(color = "black", fill=NA, size=1),
-          legend.position = "none") +
-    labs(y = expression("Effector-like score (Miller 2019)")) +
-  facet_wrap(~ seurat_clusters, ncol = 4)
+                      filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
+                      ggplot(aes(x = tissue, y = mean)) + 
+                      geom_point(alpha = 0.05) +
+                      geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                      geom_violin(adjust = 1, 
+                                  scale = "area",
+                                  trim=F, 
+                                  alpha = 0.2, 
+                                  aes(color = tissue, 
+                                      fill = tissue)) +
+                      geom_boxplot(outlier.color = NA, 
+                                   notch = T, 
+                                   width = 0.2,
+                                   alpha=0.5, 
+                                   fatten=T, 
+                                   aes(fill = tissue)) +
+                      scale_color_manual(values = custom_colors("tissues")) +
+                      scale_fill_manual(values = custom_colors("tissues")) +
+                    #scale_y_continuous(limits = c(0,1)) +
+                      theme_minimal() +
+                      theme(panel.grid = element_blank(),
+                            text = element_text(size = 10),
+                            axis.title.x = element_blank(),
+                            panel.spacing.x = unit(0, "cm"),
+                            panel.border = element_rect(color = "black", fill=NA, size=1),
+                            legend.position = "none") +
+                      labs(y = expression("Effector-like score (Miller 2019)")) +
+                    facet_wrap(~ seurat_clusters, ncol = 5)
 
 #memory-vs-effector
 clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
@@ -322,40 +321,186 @@ colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
 
 p_mem_clonotypes <- clonotypes_means %>%
-    filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem")) %>% #remove clusters with few cells/not interesting
-    filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
-    ggplot(aes(x = tissue, y = mean)) + 
-    geom_point(alpha = 0.05) +
-    geom_line(aes(group = clonotype_id), alpha = 0.2) + 
-    geom_violin(adjust = 1, 
-                scale = "area",
-                trim=F, 
-                alpha = 0.2, 
-                aes(color = tissue, 
-                    fill = tissue)) +
-    geom_boxplot(outlier.color = NA, 
-                 notch = T, 
-                 width = 0.2,
-                 alpha=0.5, 
-                 fatten=T, 
-                 aes(fill = tissue)) +
-    scale_color_manual(values = custom_colors("tissues")) +
-    scale_fill_manual(values = custom_colors("tissues")) +
-  #scale_y_continuous(limits = c(0,1)) +
-    theme_minimal() +
-    theme(panel.grid = element_blank(),
-          text = element_text(size = 10),
-          axis.title.x = element_blank(),
-          panel.spacing.x = unit(0, "cm"),
-          panel.border = element_rect(color = "black", fill=NA, size=1),
-          legend.position = "none") +
-    labs(y = expression("Memory vs. Effector (Goldrath)")) +
-  facet_wrap(~ seurat_clusters, ncol = 4)
+                      filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
+                      ggplot(aes(x = tissue, y = mean)) + 
+                      geom_point(alpha = 0.05) +
+                      geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                      geom_violin(adjust = 1, 
+                                  scale = "area",
+                                  trim=F, 
+                                  alpha = 0.2, 
+                                  aes(color = tissue, 
+                                      fill = tissue)) +
+                      geom_boxplot(outlier.color = NA, 
+                                   notch = T, 
+                                   width = 0.2,
+                                   alpha=0.5, 
+                                   fatten=T, 
+                                   aes(fill = tissue)) +
+                      scale_color_manual(values = custom_colors("tissues")) +
+                      scale_fill_manual(values = custom_colors("tissues")) +
+                    #scale_y_continuous(limits = c(0,1)) +
+                      theme_minimal() +
+                      theme(panel.grid = element_blank(),
+                            text = element_text(size = 10),
+                            axis.title.x = element_blank(),
+                            panel.spacing.x = unit(0, "cm"),
+                            panel.border = element_rect(color = "black", fill=NA, size=1),
+                            legend.position = "none") +
+                      labs(y = expression("Memory vs. Effector (Goldrath)")) +
+                    facet_wrap(~ seurat_clusters, ncol = 5)
 
 grid.arrange(p_termexh_clonotypes, p_eff_clonotypes, p_mem_clonotypes, ncol = 1)
 #show UMAPs of certain clonotypes as examples
 ```
 
-UMAP examples of certain shared clonotypes: look at CD8_texh vs. CD8_eff_Cxcr6 vs. CD8_mem
+**UMAP examples of certain shared clonotypes: look at CD8_texh vs. CD8_eff_Cxcr6 vs. CD8_mem**
+
+Track the NRP-v7+ tcrtypes across tissues:
+```{r track NRP-v7+ tcrtypes}
+#terminally exhausted
+tcrtypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & tetramer_specificity == "NRPv7") %>% 
+                              group_by(seurat_clusters, tcrtype_id, tissue) %>%
+                              summarize(mean = mean(Miller2019_terminally_exh1, na.rm = T)) %>%
+                              cast(seurat_clusters + tcrtype_id ~ tissue, value = "mean")
+tcrtypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & tcrtype_id %in% tcrtypes_pancreas_means$tcrtype_id) %>%
+                                group_by(tcrtype_id, tissue) %>%
+                                summarize(mean = mean(Miller2019_terminally_exh1, na.rm = T)) %>%
+                                cast(tcrtype_id ~ tissue, value = "mean")
+tcrtypes_means <- merge(tcrtypes_pancreas_means, tcrtypes_periphery_means , by = "tcrtype_id") %>% 
+                      melt(id.vars = c("tcrtype_id","seurat_clusters"))
+tcrtypes_means$variable <- factor(tcrtypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(tcrtypes_means)[which(colnames(tcrtypes_means) == "variable")] <- "tissue"
+colnames(tcrtypes_means)[which(colnames(tcrtypes_means) == "value")] <- "mean"
+
+ptet_termexh_tcrtypes <- tcrtypes_means %>%
+                          filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
+                          ggplot(aes(x = tissue, y = mean)) + 
+                          geom_point(alpha = 0.05) +
+                          geom_line(aes(group = tcrtype_id), alpha = 0.2) + 
+                          geom_violin(adjust = 1, 
+                                      scale = "area",
+                                      trim=F, 
+                                      alpha = 0.2, 
+                                      aes(color = tissue, 
+                                          fill = tissue)) +
+                          geom_boxplot(outlier.color = NA, 
+                                       notch = T, 
+                                       width = 0.2,
+                                       alpha=0.5, 
+                                       fatten=T, 
+                                       aes(fill = tissue)) +
+                          scale_color_manual(values = custom_colors("tissues")) +
+                          scale_fill_manual(values = custom_colors("tissues")) +
+                        #scale_y_continuous(limits = c(0,1)) +
+                          theme_minimal() +
+                          theme(panel.grid = element_blank(),
+                                text = element_text(size = 10),
+                                axis.title.x = element_blank(),
+                                panel.spacing.x = unit(0, "cm"),
+                                panel.border = element_rect(color = "black", fill=NA, size=1),
+                                legend.position = "none") +
+                          labs(y = expression("Terminally-exhausted score (Miller 2019)")) +
+                        facet_wrap(~ seurat_clusters, ncol = 4)
+
+#Miller 2019 effector-like
+tcrtypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & tetramer_specificity == "NRPv7") %>% 
+                              group_by(seurat_clusters, tcrtype_id, tissue) %>%
+                              summarize(mean = mean(Miller2019_effector_like1, na.rm = T)) %>%
+                              cast(seurat_clusters + tcrtype_id ~ tissue, value = "mean")
+tcrtypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & tcrtype_id %in% tcrtypes_pancreas_means$tcrtype_id) %>%
+                                group_by(tcrtype_id, tissue) %>%
+                                summarize(mean = mean(Miller2019_effector_like1, na.rm = T)) %>%
+                                cast(tcrtype_id ~ tissue, value = "mean")
+tcrtypes_means <- merge(tcrtypes_pancreas_means, tcrtypes_periphery_means , by = "tcrtype_id") %>% 
+                      melt(id.vars = c("tcrtype_id","seurat_clusters"))
+tcrtypes_means$variable <- factor(tcrtypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(tcrtypes_means)[which(colnames(tcrtypes_means) == "variable")] <- "tissue"
+colnames(tcrtypes_means)[which(colnames(tcrtypes_means) == "value")] <- "mean"
+
+ptet_eff_tcrtypes <- tcrtypes_means %>%
+                      filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
+                      ggplot(aes(x = tissue, y = mean)) + 
+                      geom_point(alpha = 0.05) +
+                      geom_line(aes(group = tcrtype_id), alpha = 0.2) + 
+                      geom_violin(adjust = 1, 
+                                  scale = "area",
+                                  trim=F, 
+                                  alpha = 0.2, 
+                                  aes(color = tissue, 
+                                      fill = tissue)) +
+                      geom_boxplot(outlier.color = NA, 
+                                   notch = T, 
+                                   width = 0.2,
+                                   alpha=0.5, 
+                                   fatten=T, 
+                                   aes(fill = tissue)) +
+                      scale_color_manual(values = custom_colors("tissues")) +
+                      scale_fill_manual(values = custom_colors("tissues")) +
+                    #scale_y_continuous(limits = c(0,1)) +
+                      theme_minimal() +
+                      theme(panel.grid = element_blank(),
+                            text = element_text(size = 10),
+                            axis.title.x = element_blank(),
+                            panel.spacing.x = unit(0, "cm"),
+                            panel.border = element_rect(color = "black", fill=NA, size=1),
+                            legend.position = "none") +
+                      labs(y = expression("Effector-like (Miller 2019)")) +
+                    facet_wrap(~ seurat_clusters, ncol = 4)
+
+#GOLDRATH memory vs effector
+tcrtypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & tetramer_specificity == "NRPv7") %>% 
+                              group_by(seurat_clusters, tcrtype_id, tissue) %>%
+                              summarize(mean = mean(GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN1, na.rm = T)) %>%
+                              cast(seurat_clusters + tcrtype_id ~ tissue, value = "mean")
+tcrtypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & tcrtype_id %in% tcrtypes_pancreas_means$tcrtype_id) %>%
+                                group_by(tcrtype_id, tissue) %>%
+                                summarize(mean = mean(GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN1, na.rm = T)) %>%
+                                cast(tcrtype_id ~ tissue, value = "mean")
+tcrtypes_means <- merge(tcrtypes_pancreas_means, tcrtypes_periphery_means , by = "tcrtype_id") %>% 
+                      melt(id.vars = c("tcrtype_id","seurat_clusters"))
+tcrtypes_means$variable <- factor(tcrtypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(tcrtypes_means)[which(colnames(tcrtypes_means) == "variable")] <- "tissue"
+colnames(tcrtypes_means)[which(colnames(tcrtypes_means) == "value")] <- "mean"
+
+ptet_mem_tcrtypes <- tcrtypes_means %>%
+                      filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
+                      ggplot(aes(x = tissue, y = mean)) + 
+                      geom_point(alpha = 0.05) +
+                      geom_line(aes(group = tcrtype_id), alpha = 0.2) + 
+                      geom_violin(adjust = 1, 
+                                  scale = "area",
+                                  trim=F, 
+                                  alpha = 0.2, 
+                                  aes(color = tissue, 
+                                      fill = tissue)) +
+                      geom_boxplot(outlier.color = NA, 
+                                   notch = T, 
+                                   width = 0.2,
+                                   alpha=0.5, 
+                                   fatten=T, 
+                                   aes(fill = tissue)) +
+                      scale_color_manual(values = custom_colors("tissues")) +
+                      scale_fill_manual(values = custom_colors("tissues")) +
+                    #scale_y_continuous(limits = c(0,1)) +
+                      theme_minimal() +
+                      theme(panel.grid = element_blank(),
+                            text = element_text(size = 10),
+                            axis.title.x = element_blank(),
+                            panel.spacing.x = unit(0, "cm"),
+                            panel.border = element_rect(color = "black", fill=NA, size=1),
+                            legend.position = "none") +
+                      labs(y = expression("Memory vs. Effector (Goldrath)")) +
+                    facet_wrap(~ seurat_clusters, ncol = 4)
+
+grid.arrange(ptet_termexh_tcrtypes, ptet_eff_tcrtypes, ptet_mem_tcrtypes, ncol = 1)
+```
+
 
 Upset plots, venn diagrams, or something else to look at the sharing of clones across different Seurat clusters.

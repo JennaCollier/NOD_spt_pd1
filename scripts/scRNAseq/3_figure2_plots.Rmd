@@ -23,7 +23,10 @@ require(patchwork, quietly = T) #adding p values to plots
 require(magrittr, quietly = T) #adding p values to plots
 require(gridExtra, quietly = T) #display multiple plots
 require(ggrepel, quietly = T) #labels for plots
-require(tibble, quietly = T) #rownames_to_column function
+require(tibble, quietly = T) #rownames_to_column function and deframe in GSEA analysis
+require(presto, quietly = T) #wilcoxauc quicker test for GSEA analysis across treatment groups
+require(msigdbr, quietly = T) #access to msigdb gene signatures
+require(fgsea, quietly = T) #GSEA analysis
 require(useful, quietly = T) #corner function to peek at data.frames
 require(viridis, quietly = T) #viridis color palettes
 require(readxl, quietly = T) #reading Excel files
@@ -111,10 +114,10 @@ grid.arrange(p_cd8_panonly_cluster, p_cd8_panonly_treatments, widths = c(3,6))
 Next, a stacked bar plot of the treatment group distribution within each seurat cluster:
 ```{r stacked bar chart of treatment groups per seurat cluster}
 p_treatment_per_seurat_cluster <- pan8@meta.data %>% 
-    ggplot(aes(x=factor(seurat_clusters, 
+    ggplot(aes(x = factor(seurat_clusters, 
                         levels = rev(levels(pan8$seurat_clusters))), 
                         fill = treatment)) + 
-    geom_bar(stat="count", 
+    geom_bar(stat = "count", 
              position = "fill") + 
     scale_x_discrete(expand = c(0,0)) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
@@ -130,6 +133,39 @@ p_treatment_per_seurat_cluster <- pan8@meta.data %>%
     scale_fill_manual(values = custom_colors("treatments")) +
     coord_flip()
 p_treatment_per_seurat_cluster
+```
+
+Bar chart showing the difference in the seurat clusters within each treatment group by each mouse. This is also shown by Fisher's exact test.
+```{r bar chart of percent seurat clusters in each treatment group}
+# p_seurat_cluster_per_treatment <- pan8@meta.data %>% 
+#                                     group_by(treatment, mouse_id, seurat_clusters) %>%
+#                                     tally() %>%
+#                                     group_by(treatment,mouse_id) %>%
+#                                     mutate(prcnt = n*100/sum(n)) %>%
+#                                     ggplot(aes(x = factor(seurat_clusters, 
+#                                                           levels = rev(levels(pan8$seurat_clusters))), 
+#                                                fill = treatment,
+#                                                y = prcnt)) + 
+#                                     geom_violin(position = position_dodge(0.9), 
+#                                                 scale = "width", 
+#                                                 adjust = 1) + 
+#                                     facet_wrap(~ seurat_clusters, 
+#                                                nrow = 1, 
+#                                                scales = "free_x") + 
+#                                     scale_x_discrete(expand = c(0,0)) +
+#                                     scale_y_continuous(expand=c(0,0)) +
+#                                     theme_minimal() +
+#                                     theme(panel.grid = element_blank(),
+#                                           text = element_text(size = 15),
+#                                           legend.position = "right",
+#                                           panel.spacing = unit(0, "lines"),
+#                                           panel.border = element_rect(fill = NA, color = "black", size = 1)) +
+#                                     labs(title = "CD8+ T cells in the pancreas", 
+#                                          y = "Percent of Seurat Cluster", 
+#                                          x = NULL,
+#                                          color = "Tissue") +
+#                                     scale_fill_manual(values = custom_colors("treatments"))
+# p_seurat_cluster_per_treatment
 ```
 
 A volcano plot shows the DE genes between the PD1 and Spt treatment groups:
@@ -539,4 +575,156 @@ p_raw <- tbl %>%
                 fill = "T cells in\ncluster")
 
 grid.arrange(p_raw, p_fisher, p_chisq, ncol = 3, widths = c(1.5,1.5,1))
+```
+
+GSEA will be used to generate dot plots of enriched/interesting gene signatures that differ between CD8+ T cells across the treatment groups. For GSEA, we need the information of all genes, Seurat is just too slow if we test all 20,000 genes, so presto is used to perform a fast Wilcoxon rank sum test. The fgsea() function requires a list of gene sets to check, and a named vector of gene-level statistics, where the names should be the same as the gene names in the pathways list. A currated list of gene signatures will be examined.
+```{r GSEA dot plots of enriched/interesting gene signatures}
+all_genes <- wilcoxauc(pan8, "treatment") #fast Wilcoxon rank sum test between treatment groups
+
+m_df <- rbind(msigdbr(species = "Mus musculus", category = "C7", subcategory = "IMMUNESIGDB")) #get database of gene signatures. Just using C7 IMMUNESIGDB
+head(m_df)
+
+fgsea_sets <- m_df %>% 
+                split(x = .$gene_symbol, f = .$gs_name) #split the database into a list
+corner(fgsea_sets)
+
+#add custom gene signatures into fgsea
+fgsea_sets$Miller2019_progenitor_exh <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Progenitor Exh.")$gene
+fgsea_sets$Miller2019_terminally_exh <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Terminally Exh.")$gene
+fgsea_sets$Miller2019_effector_like <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Effector-like")$gene
+fgsea_sets$beura_trm <- convertHumanGeneList(read_excel("ref/signatures/20200711_Beura_Trm_2017_Immunity.xlsx", sheet = "Beura_FRT_TRM_UP",col_names = F)$`...1`)
+fgsea_sets$nonbystander <- read_excel("ref/signatures/20200718_Mognol_PNAS2017_bystanders.xlsx", sheet = "OT-1 UP (TS)",col_names = F)$`...1`
+fgsea_sets$bystander <- read_excel("ref/signatures/20200718_Mognol_PNAS2017_bystanders.xlsx", sheet = "P14 UP (bystander)",col_names = F)$`...1`
+fgsea_sets$cd8_activation_sarkar <- convertHumanGeneList(read.table("ref/signatures/cd8_activation_sarkar_up.txt")$V1)
+fgsea_sets$cell_cycle <- convertHumanGeneList(read.table("ref/signatures/cell_cycle_all_strong.txt")$V1)
+lag3 <- read_excel("ref/signatures/stephanie_de_genes.xlsx") #these DE genes are from FindAllMarkers, so they will be parsed out into separate signatures
+  fgsea_sets$lag3exh1 <- lag3 %>% filter(cluster == 1) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
+  fgsea_sets$lag3progexh2 <- lag3 %>% filter(cluster == 2) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
+  fgsea_sets$lag3exh3 <- lag3 %>% filter(cluster == 3) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
+  fgsea_sets$lag3act4 <- lag3 %>% filter(cluster == 4) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
+  fgsea_sets$lag3act6 <- lag3 %>% filter(cluster == 6) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
+  fgsea_sets$lag3eff7 <- lag3 %>% filter(cluster == 7) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
+  fgsea_sets$lag3mem8 <- lag3 %>% filter(cluster == 8) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
+
+genes <- list() #initialize a list of data.frames of features and auc for each treatment group
+ranks <- list() #initialize a list of ranks for each treatment group
+fgsea_results <- list() #initialize a list of gsea results
+for (current_treatment in c("IgG","Spt","PD1")) {
+  genes[[current_treatment]] <- all_genes %>%
+                                  dplyr::filter(group == current_treatment) %>%
+                                  arrange(desc(auc)) %>% 
+                                  dplyr::select(feature, auc)
+  write.table(genes[[current_treatment]], 
+              row.names = F, 
+              col.names = F, 
+              sep = "\t", 
+              quote = F,
+              file = paste0("output/CD8_", current_treatment, ".rnk"))
+  ranks[[current_treatment]] <- deframe(genes[[current_treatment]]) #converts two-column data frames to a named vector or list, using the first column as name and the second column as value
+  fgsea_results[[current_treatment]] <- fgsea(fgsea_sets, #C7 gene signatures
+                                              nperm = 1000,
+                                              stats = ranks[[current_treatment]]) #use preranked genes
+  fgsea_results[[current_treatment]] <- fgsea_results[[current_treatment]] %>% #tidy the table
+                                          as_tibble() %>%
+                                          arrange(desc(NES)) %>%
+                                          dplyr::select(-leadingEdge, -ES, -nMoreExtreme) #remove unneccesary columns
+}
+
+#find the most interesting gene signatures
+fgsea_results <- rbind(data.frame(fgsea_results[["PD1"]], treatment = "PD1"),
+                  data.frame(fgsea_results[["Spt"]], treatment = "Spt"),
+                  data.frame(fgsea_results[["IgG"]], treatment = "IgG"))
+
+signatures_of_interest <- c("GSE9006_HEALTHY_VS_TYPE_1_DIABETES_PBMC_AT_DX_UP",
+                            "GSE9006_HEALTHY_VS_TYPE_1_DIABETES_PBMC_4MONTH_POST_DX_UP",
+                            "GSE9006_HEALTHY_VS_TYPE_1_DIABETES_PBMC_1MONTH_POST_DX_UP",
+                            "GSE9006_TYPE_1_DIABETES_AT_DX_VS_1MONTH_POST_DX_PBMC_UP",
+                            "GSE9006_TYPE_1_DIABETES_AT_DX_VS_4MONTH_POST_DX_PBMC_UP",
+                            "GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_UP",
+                            "KAECH_DAY8_EFF_VS_MEMORY_CD8_TCELL_UP",
+                            "KAECH_DAY8_EFF_VS_DAY15_EFF_CD8_TCELL_UP",
+                            "GSE33425_CD161_INT_VS_NEG_CD8_TCELL_UP",
+                            "GSE14699_DELETIONAL_TOLERANCE_VS_ACTIVATED_CD8_TCELL_UP",
+                            "GSE41867_DAY6_EFFECTOR_VS_DAY30_MEMORY_CD8_TCELL_LCMV_ARMSTRONG_UP",
+                            "GSE9650_EFFECTOR_VS_EXHAUSTED_CD8_TCELL_UP",
+                            "GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_UP",
+                            "GSE30962_ACUTE_VS_CHRONIC_LCMV_PRIMARY_INF_CD8_TCELL_UP",
+                            "GSE8678_IL7R_LOW_VS_HIGH_EFF_CD8_TCELL_UP",
+                            "GSE8678_IL7R_LOW_VS_HIGH_EFF_CD8_TCELL_DN",
+                            "Miller2019_progenitor_exh1",
+                            "Miller2019_terminally_exh",
+                            "Miller2019_effector_like",
+                            "beura_trm",
+                            "nonbystander",
+                            "bystander",
+                            "cell_cycle",
+                            "cd8_activation_sarkar",
+                            "lag3exh1",
+                            "lag3progexh2",
+                            "lag3exh3",
+                            "lag3mem8",
+                            "lag3eff7",
+                            "lag3act4",
+                            "lag3act6")
+
+fgsea_results %>% 
+  filter(pathway %in% signatures_of_interest & padj < 0.05) %>% 
+  ggplot(aes(y = pathway,
+             x = treatment,
+             color = NES, 
+             size = -log10(padj))) + 
+  geom_point(shape=16) + 
+  scale_size_continuous(range = c(1,10)) + 
+  scale_color_gsea() +
+  theme_minimal() + 
+  theme(axis.title = element_blank(),
+        panel.grid = element_blank(),
+        text = element_text(size = 15))
+
+melt(fgsea_results, id.vars = c("pathway","treatment"), measure.vars = c("padj","NES")) -> test
+dcast(test, pathway ~ treatment + variable) -> test
+```
+
+Plot a bar chart of NRP-v7+ T cells per cluster
+```{r plot NRP-v7 staining}
+p_tetramer_per_cluster <- seurat_integrated@meta.data %>%
+                            filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
+                            ggplot(aes(x = factor(seurat_clusters, 
+                                                levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
+                                                fill = tetramer_specificity)) + 
+                            geom_bar(stat = "count", 
+                                     position = "fill") + 
+                            scale_x_discrete(expand = c(0, 0)) +
+                            scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                                               expand = c(0, 0)) +
+                            theme_minimal() +
+                            theme(panel.grid = element_blank(),
+                                  text = element_text(size = 15),
+                                  legend.position = "right") +
+                            labs(title = "CD8 T cells", 
+                                 y = "Percent of Seurat Cluster", 
+                                 x = NULL,
+                                 color = "Tissue") +
+                            scale_fill_manual(values = custom_colors("tetramer")) +
+                            coord_flip()
+p_tetramer_per_cluster_pan <- pan8@meta.data %>%
+                            ggplot(aes(x = factor(seurat_clusters, 
+                                                levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
+                                                fill = tetramer_specificity)) + 
+                            geom_bar(stat = "count", 
+                                     position = "fill") + 
+                            scale_x_discrete(expand = c(0, 0)) +
+                            scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                                               expand = c(0, 0)) +
+                            theme_minimal() +
+                            theme(panel.grid = element_blank(),
+                                  text = element_text(size = 15),
+                                  legend.position = "right") +
+                            labs(title = "CD8 T cells in pancreas", 
+                                 y = "Percent of Seurat Cluster", 
+                                 x = NULL,
+                                 color = "Tissue") +
+                            scale_fill_manual(values = custom_colors("tetramer")) +
+                            coord_flip()
+grid.arrange(p_tetramer_per_cluster, p_tetramer_per_cluster_pan, ncol = 2)
 ```

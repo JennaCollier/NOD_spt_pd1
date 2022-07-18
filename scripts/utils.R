@@ -20,6 +20,11 @@ custom_colors <- function(pal) {
               "non-PM" = "#33a02c"))
   }
   
+  if (pal == "tetramer") {
+    return(c("unknown" = "grey90",
+             "NRPv7" = "Firebrick"))
+  }
+  
   if (pal == "celltypes") {
     return(c("CD8" = "#fe4a49",
              "Tcon" = "#011f4b",
@@ -63,4 +68,16 @@ convertHumanGeneList <- function(x){
   # Print the first 6 genes found to the screen
   print(head(humanx))
   return(humanx)
+}
+
+## Amino acid functions for TCR analyses
+aminos <- function(){
+  return(c("A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"))
+}
+
+amino_color_scheme <- function(){
+  return(make_col_scheme(chars=aminos(), groups=c('neutral', 'hydrophobic', 'acidic', 'acidic', 'very hydrophobic', 'neutral', 'basic', 'hydrophobic', 'basic', 'very hydrophobic', 'hydrophobic', 'neutral', 'neutral', 'neutral', 'basic', 'neutral', 'neutral', 'neutral', 'very hydrophobic', 'very hydrophobic'),
+                         
+                         cols=c('black', 'darkgoldenrod', 'navyblue', 'navyblue', 'darkgoldenrod2', 'black', 'coral2', 'darkgoldenrod', 'coral2', 'darkgoldenrod2', 'darkgoldenrod', 'black', 'black', 'black', 'coral2', 'black', 'black', 'black', 'darkgoldenrod2', 'darkgoldenrod2')))
+  
 }

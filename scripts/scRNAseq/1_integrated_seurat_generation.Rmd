@@ -228,12 +228,12 @@ new_metadata <- seurat_integrated@meta.data[!(is.na(seurat_integrated@meta.data$
                                    breaks=c(0,1,5,20,50,100,300), 
                                    labels=c("1","2-4","5-19","20-49","50-99","100-300"))) %>%
     column_to_rownames('barcode') %>%
-    select(tcrtype_id, tcrtype_count, tcrtype_count_bin)
+    dplyr::select(tcrtype_id, tcrtype_count, tcrtype_count_bin)
 seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
 
 ## TCRTYPE CONVERGENCE
 obj_convergence <- seurat_integrated@meta.data %>% 
-                      select(tcrtype_id, clonotype_id) %>%
+                      dplyr::select(tcrtype_id, clonotype_id) %>%
                       unique() %>% arrange(tcrtype_id) %>%
                       group_by(tcrtype_id) %>%
                       count() %>%
@@ -243,7 +243,7 @@ new_metadata <- seurat_integrated@meta.data %>%
                     rownames_to_column('barcode') %>%
                     mutate(tcrtype_convergence = obj_convergence[tcrtype_id]) %>%
                     column_to_rownames('barcode') %>%
-                    select(tcrtype_convergence) 
+                    dplyr::select(tcrtype_convergence) 
 seurat_integrated <- AddMetaData(seurat_integrated, metadata = new_metadata)
 ```
 
@@ -666,10 +666,30 @@ gene_signatures <- c("SLEC1",
                      "lag3act61")
 ```
 
-Add the NRP-v7 tetramer staining to the Seurat meta data for ease of plotting.
+Add the NRP-v7 tetramer staining to the Seurat meta data for ease of plotting. An NRP-v7+ T cell was identified if: 1) The cell was classified as a CD8 T cell; 2) The cell had an associated TCR; 3) the cell had a NRP-7 tetramer TotalSeqC staining value of over 0.5, and; 4) if, based on the previous criteria, there were more positive than negative NRP-v7 T cells in the tcrtype (determined by paired TRA.cdr3 and TRB.cd3 sequences only).
 ```{r }
 new_metadata <- as.data.frame(t(seurat_integrated@assays$FB@data))
 colnames(new_metadata) <- "NRPv7_TotalSeqC"
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+new_metadata <- seurat_integrated@meta.data %>% 
+                  mutate(tetramer_specificity = ifelse(NRPv7_TotalSeqC > 1 & celltype == "CD8", #cutoff for specificity
+                                                 "NRPv7", 
+                                                 "unknown")) %>%
+                  dplyr::select(tetramer_specificity)
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+#use TCRtypes to determine specificity
+tbl <- data.frame(seurat_integrated@meta.data %>%
+        filter(!is.na(tcrtype_id)) %>%
+        group_by(tetramer_specificity, tcrtype_id) %>% 
+        tally() %>% 
+        cast(tcrtype_id ~ tetramer_specificity, value = "n")) %>%
+        arrange(desc(NRPv7))
+tbl[is.na(tbl)] <- 0
+nrpv7_tcrtypes <- tbl %>% filter(NRPv7 > unknown) %>% pull(tcrtype_id) #consider a cell NRPv7 positive if there is more NRPv7 positive than negative cells
+new_metadata <- seurat_integrated@meta.data %>%
+                  mutate(tetramer_specificity = ifelse(tcrtype_id %in% nrpv7_tcrtypes, "NRPv7", "unknown")) %>%
+                  dplyr::select(tetramer_specificity)
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 ```
 
