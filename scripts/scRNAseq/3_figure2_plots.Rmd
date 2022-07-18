@@ -687,6 +687,26 @@ dcast(test, pathway ~ treatment + variable) -> test
 
 Plot a bar chart of NRP-v7+ T cells per cluster
 ```{r plot NRP-v7 staining}
+p_tetramer_per_tissue <- seurat_integrated@meta.data %>%
+                          filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
+                          ggplot(aes(x = tissue, #orders clusters properly
+                                     fill = tetramer_specificity)) + 
+                          geom_bar(stat = "count", 
+                                   position = "fill") + 
+                          scale_x_discrete(expand = c(0, 0)) +
+                          scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                                             expand = c(0, 0)) +
+                          theme_minimal() +
+                          theme(panel.grid = element_blank(),
+                                text = element_text(size = 15),
+                                legend.position = "right") +
+                          labs(title = "CD8 T cells", 
+                               y = "Percent of tissue", 
+                               x = NULL,
+                               color = "Tissue") +
+                          scale_fill_manual(values = custom_colors("tetramer")) +
+                          coord_flip()
+
 p_tetramer_per_cluster <- seurat_integrated@meta.data %>%
                             filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
                             ggplot(aes(x = factor(seurat_clusters, 
@@ -707,6 +727,7 @@ p_tetramer_per_cluster <- seurat_integrated@meta.data %>%
                                  color = "Tissue") +
                             scale_fill_manual(values = custom_colors("tetramer")) +
                             coord_flip()
+
 p_tetramer_per_cluster_pan <- pan8@meta.data %>%
                             ggplot(aes(x = factor(seurat_clusters, 
                                                 levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
@@ -727,4 +748,8 @@ p_tetramer_per_cluster_pan <- pan8@meta.data %>%
                             scale_fill_manual(values = custom_colors("tetramer")) +
                             coord_flip()
 grid.arrange(p_tetramer_per_cluster, p_tetramer_per_cluster_pan, ncol = 2)
+
+
 ```
+
+Morisitia's overlap index.

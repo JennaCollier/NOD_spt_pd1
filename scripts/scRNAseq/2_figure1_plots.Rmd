@@ -61,8 +61,8 @@ p_allcells_cluster <- seurat_integrated@meta.data %>%
                               axis.text = element_blank(),
                               text = element_text(size = 15),
                               panel.grid = element_blank()) +
-                        labs(color = NULL,
-                             title = "All T cells") +
+                        labs(color= NULL,
+                             title = NULL) +
                         geom_label_repel(data = integrated_cls, #these centroids will change depending on Seurat used
                                          mapping = aes(x = U1,
                                                        y = U2, 
@@ -87,8 +87,8 @@ p_treatment <- seurat_integrated@meta.data %>%
                       panel.grid = element_blank(),
                       text = element_text(size = 15),
                       legend.position = c(0.1,0.1)) +
-                labs(color = NULL,
-                     title = "All T cells: Treatment groups") +
+                labs(color= NULL,
+                     title = NULL) +
                 guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                               size = 5, 
                                                               shape = 19))) + 
@@ -106,8 +106,8 @@ p_tissues <- seurat_integrated@meta.data %>%
           panel.grid = element_blank(),
           text = element_text(size = 15),
           legend.position = c(0.1,0.1)) +
-    labs(color = NULL,
-         title = "All T cells: Tissues") +
+    labs(color= NULL,
+         title = NULL) +
     guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                   size = 5, 
                                                   shape = 19))) + 
@@ -126,7 +126,7 @@ p_tetramer <- seurat_integrated@meta.data %>%
           text = element_text(size = 15),
           legend.position = c(0.1,0.1)) +
     labs(color = NULL,
-         title = "All T cells: NRP-v7 tetramer TotalSeqC") +
+         title = "All T cells: NRP-v7 tetramer positive") +
     guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                   size = 5, 
                                                   shape = 19))) + 
@@ -144,8 +144,8 @@ p_celltypes <- seurat_integrated@meta.data %>%
           panel.grid = element_blank(),
           text = element_text(size = 15),
           legend.position = c(0.1,0.1)) +
-    labs(color=NULL,
-         title = "All T cells: Cell types") +
+    labs(color= NULL,
+         title = NULL) +
     guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                   size = 5, 
                                                   shape = 19))) + 
@@ -162,17 +162,18 @@ p_expansion <- seurat_integrated@meta.data %>%
           axis.text = element_blank(),
           panel.grid = element_blank(),
           text = element_text(size = 15),
-          legend.position = c(0.2, 0.1)) +
-    labs(color=expression(log[10](clonotype~count+1)), #this puts the 10 as a subscript for the log10
-         title = "All T cells: Clonotype expansion") +
-    scale_color_viridis(direction = -1, option = "D") +
+          legend.position = c(0.2, 0.1),
+          legend.key.height = unit(0.25,"cm")) +
+    labs(color= NULL,
+         title = NULL) +
+    scale_color_gradient(na.value ="grey90",low = "black", high = "red", breaks = c(0.5,2)) +
     guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
 
 grid.arrange(p_tissues, p_treatment, p_celltypes, p_expansion, nrow = 2)
 ```
 
 Next, create a stacked bar chart showing the distribution of tissues in each Seurat cluster:
-```{r stacked bar chart of tissues per seurat cluster}
+```{r stacked bar chart of tissues and cell type per seurat cluster}
 p_tissue_per_seurat_cluster <- seurat_integrated@meta.data %>% 
     ggplot(aes(x = factor(seurat_clusters, 
                         levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
@@ -185,14 +186,39 @@ p_tissue_per_seurat_cluster <- seurat_integrated@meta.data %>%
     theme_minimal() +
     theme(panel.grid = element_blank(),
           text = element_text(size = 15),
-          legend.position = "right") +
-    labs(title = "All T cells", 
-         y = "Percent of Seurat Cluster", 
+          axis.text.x = element_blank(),
+          legend.position = "none") +
+    labs(title = NULL, 
+         y = NULL, 
          x = NULL,
          color = "Tissue") +
     scale_fill_manual(values = custom_colors("tissues")) +
     coord_flip()
 p_tissue_per_seurat_cluster
+
+p_celltype_per_seurat_cluster <- seurat_integrated@meta.data %>% 
+    ggplot(aes(x = factor(seurat_clusters, 
+                        levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
+                        fill = celltype)) + 
+    geom_bar(stat = "count", 
+             position = "fill") + 
+    scale_x_discrete(expand = c(0, 0)) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                       expand = c(0, 0)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          text = element_text(size = 15),
+          axis.text = element_blank(),
+          legend.position = "none") +
+    labs(title = NULL, 
+         y = NULL, 
+         x = NULL,
+         color = "Tissue") +
+    scale_fill_manual(values = custom_colors("celltypes")) +
+    coord_flip()
+p_celltype_per_seurat_cluster
+
+grid.arrange(p_tissue_per_seurat_cluster, p_celltype_per_seurat_cluster, nrow = 1, widths = c(1.7,1))
 ```
 
 Plot a bar chart of NRP-v7+ T cells per cluster
@@ -221,6 +247,49 @@ p_tetramer_per_cluster <- seurat_integrated@meta.data %>%
                             scale_fill_manual(values = c("unknown" = "grey90", "pancreas NRPv7" = "Firebrick", "periphery NRPv7" = "hotpink")) +
                             coord_flip()
 p_tetramer_per_cluster
+
+## TOP 50 CLONOTYPES
+## needs to be fixe to factor each group separately
+cumulative_sums <- pan8@meta.data %>% filter(!is.na(clonotype_id)) %>% 
+                      group_by(clonotype_id, tetramer_specificity) %>% 
+                      tally() %>% 
+                      group_by(tetramer_specificity) %>% 
+                      mutate(prcnt = n*100/sum(n)) %>% 
+                      group_by(tetramer_specificity) %>% 
+                      arrange(tetramer_specificity, desc(prcnt)) %>% 
+                      mutate(cs = cumsum(prcnt))
+
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = unique(cumulative_sums$clonotype_id))
+
+p_top50_clonos <- cumulative_sums %>% 
+                    group_by(tetramer_specificity) %>% 
+                    slice_head(n = 50) %>% 
+                    ggplot(aes(x = clonotype_id, 
+                               y = cs, 
+                               color = tetramer_specificity)) + 
+                    geom_point() + 
+                    geom_segment(aes(xend = clonotype_id, 
+                                     yend = cs, 
+                                     x = clonotype_id, 
+                                     y = 0, 
+                                     color = tetramer_specificity)) + 
+                    scale_color_manual(values = custom_colors("tetramer")) +
+                    scale_y_continuous(expand = c(0, 0)) +
+                    theme_minimal() +
+                    theme(panel.grid = element_blank(),
+                          panel.spacing.x = unit(0, "lines"),
+                          text = element_text(size = 15),
+                          axis.text.x = element_blank(),
+                          panel.border = element_rect(colour = "black", 
+                                                      fill = NA, 
+                                                      size = 1),
+                          legend.position = "none") +
+                    labs(x = "Top 50 clonotypes", 
+                         y = "Cumulative % CD8 TCRs",
+                         title = "CD8+ T cells in pancreas") +
+                    facet_wrap(~ tetramer_specificity, scales = "free_x")
+p_top50_clonos
 ```
 
 To plot a heatmap of genes of interest across the clusters in Morpheus, the following manually annotated list of genes of interest, **goi**, will be examined. The average expression for each cluster will be determined and this data will be used to plot in Morpheus (Broad institute). The average expression for every gene will be determined to plot the pearson correlations for the Seurat clusters across tissues as well. 
@@ -236,7 +305,8 @@ avgs <- avgs %>%
           relocate(tissue_and_cluster, tissue, seurat_clusters) #move columns to left of data frame
 write.table(avgs, "output/seurat_cluster_avg_expression_all_genes_for_morpheus.tsv", sep = "\t", quote = F, row.names = F) #write the data to table
 
-memory_genes <- c("Sell","Il7r","Bcl2","Lef1")
+memory_genes <- c("Sell","Il7r","Bcl2","Lef1","S1pr1")
+eff_genes
 exh_genes <- c("Pdcd1","Havcr2","Lag3","Cd38","Ctla4","Tigit","Cd101","Ctla4","Tox","Tcf7","Slamf6")
 surface <- c("Cd226","Icos","Cd28","Tnfsf9","Tnfsf4","Il2rb","Tnfsf14","Ifngr1","Entpd1","Nrn1")
 eff_genes <- c("Ifng","Fasl","Gzma","Gzmk","Gzmb","Prf1","Tnfsf10","Tnf","Il2","Gzmm","Nkg7","Klrd1","Itgal","Klrg1")
@@ -246,7 +316,7 @@ apoptosis <- c("Casp3","Tnfsf11","Nr4a3","Nfkb1","Nlrp3")
 proliferation <- c("Mki67","Stmn1","Birc5","Pclaf")
 ifnstim <- c("Isg15","Ifi27l2a","Ifit1","Ifit3")
 
-goi <- c(coinh,surface,eff,tf,chemokines,apoptosis,proliferation,ifnstim) #concatenate all of the genes of interest
+goi <- c(surface,eff_genes,exh_genes,tf,chemokines,apoptosis,proliferation,ifnstim,memory_genes) #concatenate all of the genes of interest
 
 ## create a data frame of annotated genes based on function
 goi_annot <- data.frame(gene = goi, 

@@ -356,7 +356,7 @@ p_boxplot_pm_pan <- seurat_integrated@meta.data %>%
 ```
 
 Show the top 50 clonotypes as a percentage of TCRs detected in the BLOOD as a cumulative sum and also the clone sizes for the different treatment groups.
-```{r top 50 clonotypes and clone size in pancreas}
+```{r top 50 clonotypes and clone size in blood}
 #TOP 50 CLONOTYPES: CD8 IN BLOOD
 cumulative_sums <- seurat_integrated@meta.data %>% 
                     filter(clonotype_tissue_groups %in% c("blood&pancreas","blood") & celltype == "CD8") %>%
@@ -694,7 +694,7 @@ allvolcano %>%
 ```
 
 DE genes volcano plot between pancreas-matching and non-matching T cells in the blood between different treatment groups.
-```{r volcano plot of PM T cells in blood}
+```{r volcano plot of PM vs. non-PM T cells in blood}
 cutoff <- 0.25 #set a cutoff for DE gene expression
 ident1 <- "PM"
 ident2 <- "non-PM"
@@ -778,5 +778,16 @@ allvolcano %>%
 ```
 
 SAVE data for COMETSC
+```{r COMET}
+bld <- subset(seurat_integrated,idents = "blood")
+Idents(bld) <- bld$cd4_or_cd8
+bld8 <- subset(bld, idents = "CD8")
+bld8 <- subset(bld8, cells = bld@meta.data %>% filter(!is.na(pancreas_matching)) %>% rownames())
+write.table(bld8@meta.data %>% mutate(comet_clusters = paste0(treatment,"_",pancreas_matching))%>%dplyr::select(comet_clusters), "output/cometsc/cluster.txt", quote = F, sep = "\t", col.names = F)
+write.table(bld8@meta.data %>% dplyr::select(allcells_UMAP_1,allcells_UMAP_2), "output/cometsc/vis.txt", quote = F, sep = "\t", col.names = F)
+write.table(as.data.frame(bld8@assays$RNA@data), "output/cometsc/marker.txt", quote = F, sep = "\t")
 
+```
+
+Upset plot for sharing between tissues
 

@@ -1,0 +1,277 @@
+---
+title: "7_figure6_plots"
+output: rmarkdown::github_document
+date: '2022-07-10'
+---
+
+
+This code documents the initialization of the Seurat objects for patient colitis.
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+```
+
+```{r libraries, message = FALSE, warning = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(Seurat, quietly = T) #scRNA-seq analysis
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(rstatix, quietly = T) #adding p values to plots
+require(ggprism, quietly = T) #adding p values to plots
+require(ggsci, quietly = T) #IGV color palette
+require(patchwork, quietly = T) #adding p values to plots
+require(magrittr, quietly = T) #adding p values to plots
+require(gridExtra, quietly = T) #display multiple plots
+require(ggrepel, quietly = T) #labels for plots
+require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
+require(viridis, quietly = T) #viridis color palettes
+require(readxl, quietly = T) #reading Excel files
+require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
+source("scripts/utils.R") #custom color palettes and other functions
+set.seed(1) #set a seed for reproducibility
+```
+Remove acinar cells and get gene signatures. UC shows a shift from memory to effectorness wheras PD1 shows shift towards Texhaustion. Look at 2D (texh vs eff and teff vs mem):
+```{r identify effector-memory vs. texh signature in mice}
+new_metadata <- pan8@meta.data %>% 
+                  mutate(patient_signature = case_when(seurat_clusters %in% c("CD8_pexh","CD8_eff","CD8_mem") ~ "Spt_clusters",
+                                                       seurat_clusters %in% c("CD8_texh","Proliferating") ~ "PD1_clusters",
+                                                       TRUE ~ NA_character_)) %>% 
+                  dplyr::select(patient_signature)
+
+pan8 <- AddMetaData(pan8, new_metadata)
+markers <- FindMarkers(pan8, 
+                       ident.1 = "PD1_clusters", 
+                       ident.2 = "Spt_clusters", 
+                       group.by = "patient_signature") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+
+#aim for around 150 genes
+markers %>% filter(avg_log2FC>0) %>% count()
+
+#genes are mouse, so convert them to human
+PD1_signature <- convertMouseGeneList(markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+```
+With the human genes associated with PD1 compared to Spt, project these gene signatures onto the patient colitis data.
+```{r project signatures onto colitis data}
+luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(PD1_signature), name = "PD1_signature")
+corri <- AddModuleScore(corri, features = list(PD1_signature), name = "PD1_signature")
+boland_cd8 <- AddModuleScore(boland_cd8, features = list(PD1_signature), name = "PD1_signature")
+
+#temporary fix to adjust naming scheme
+luoma_cd8$treatment <- factor(recode_factor(luoma_cd8$treatment, "CT" = "healthy", "NC" = "ICI", "C" = "ICI+colitis"), 
+                              levels = c("healthy","ICI","ICI+colitis"))
+corri$treatment <- factor(recode_factor(corri$treatment, "HC" = "healthy", "UC" = "colitis"), levels = c("healthy","colitis"))
+boland_cd8$treatment <- factor(recode_factor(boland_cd8$treatment, "HC" = "healthy", "UC" = "colitis"), levels = c("healthy","colitis"))
+
+cd8s <- rbind(luoma_cd8@meta.data %>% dplyr::select(paper,treatment,sample,PD1_signature1),
+              corri@meta.data %>% dplyr::select(paper,treatment,sample,PD1_signature1),
+              boland_cd8@meta.data %>% dplyr::select(paper,treatment,sample,PD1_signature1))
+
+stat.test <- data.frame(luoma_cd8@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+                            ungroup() %>%
+                            t_test(PD1_signature1 ~ treatment) %>% 
+                            add_xy_position())
+
+p_luoma <- luoma_cd8@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = PD1_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "CD8 T cells: Luoma", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.adj.signif",
+             tip.length = 0,
+             label.size = 8)
+
+## CORRIDONI
+stat.test <- data.frame(corri@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+                            ungroup() %>%
+                            t_test(PD1_signature1 ~ treatment) %>% 
+                            add_xy_position() %>%
+                            add_significance())
+
+p_corri <- corri@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = PD1_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "none") +
+    scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "CD8 T cells: Corridoni", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.signif", #t test is not adjusted because there are only two groups
+             tip.length = 0,
+             label.size = 8)
+
+## BOLAND
+stat.test <- data.frame(boland_cd8@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+                            ungroup() %>%
+                            t_test(PD1_signature1 ~ treatment) %>% 
+                            add_xy_position() %>%
+                            add_significance())
+
+p_boland <- boland_cd8@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = PD1_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "none") +
+    scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "CD8 T cells: Boland", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.signif",
+             tip.length = 0,
+             label.size = 8)
+
+grid.arrange(p_corri, p_boland, p_luoma, nrow = 1, widths = c(1,1,2))
+```
+
+Create 2D plots showing the different gene signatures across the treatment groups:
+```{r generated 2D plots}
+medians_2d <- boland_cd8@meta.data %>% 
+  group_by(celltype,paper,pathology,sample) %>% 
+  summarize(PD1_score_median = median(PD1_signature1), Spt_score_median = median(Spt_signature1))
+
+ggplot(boland_cd8@meta.data,
+       aes(x=PD1_signature1, y=Spt_signature1, group = treatment)) +
+    stat_density_2d(geom = "polygon", 
+                    aes(alpha = ..level.., fill = treatment), bins = 6) +
+    theme(panel.background = element_blank(),
+          strip.background = element_blank(),
+          panel.spacing.x = unit(0, "lines"),
+          text = element_text(size=20),
+          legend.title = element_blank(),
+          panel.border = element_rect(colour = "black", fill=NA, size=1),
+          legend.position = "top") +
+    scale_fill_manual(values = colpalette) +
+    scale_color_manual(values = colpalette) +
+    scale_alpha_binned(range = c(0.1,0.7)) +
+    labs(y = "TCF7 ModuleScore", x = "CXCR6 ModuleScore") + 
+    facet_grid(cols = vars(paper), scales="free") +
+    guides(alpha = "none") 
+    #geom_point(data = medians_2d %>% filter(celltype == "CD8"), aes(x=cxcr6_score_median,y=tcf7_score_median, color=pathology), size=4)
+```
+
+CT = healthy controls; NC = CPI + no colitis; C = CPI + colitis
+```{r Luoma: Initialization of Seurat object}
+experiments <- list.files("data/colitis/luoma/CD3") 
+experiments
+
+data <- list() # List containing GEX and FB data
+luomas <- list() # List containing all the Seurat objects
+
+# Loop through each experiment in experiments
+for (experiment in experiments) {
+  # Read 10X data
+  data[[experiment]] <- Read10X(data.dir = paste0("data/colitis/luoma/CD3/", experiment), strip.suffix = F) 
+  # Create Seurat object
+  luomas[[experiment]] <- CreateSeuratObject(counts = data[[experiment]], 
+                                       project = experiment, min.cells = 50, min.features = 200) 
+  
+  ## Add meta data to Seurat object
+  luomas[[experiment]]@meta.data$sample <- unlist(strsplit(experiment,"-"))[1] # All experiment information
+  luomas[[experiment]]@meta.data$treatment <- gsub("[0-9]+", "", luomas[[experiment]]@meta.data$sample)
+  luomas[[experiment]]@meta.data$paper <- "luoma"
+  
+  # Rename cells to add suffix corresponding to sample name
+  luomas[[experiment]] <- RenameCells(luomas[[experiment]], 
+                                              new.names = sapply(rownames(luomas[[experiment]]@meta.data),  function(x) sub(pattern="1", replacement = unlist(strsplit(experiment,"-"))[1], x)))
+}
+
+# Merge all Seurat objects generating unique cell IDs
+luoma <- merge(x = luomas[[experiments[1]]], y = luomas[2:length(luomas)])
+luoma
+
+# Add pathology depending on treatment group
+new_metadata <- luoma@meta.data %>% dplyr::select(treatment)
+new_metadata$pathology <- "healthy"
+new_metadata[which(new_metadata$treatment == "C"), "pathology"] <- "ICI Colitis"
+new_metadata[which(new_metadata$treatment == "NC"), "pathology"] <- "ICI No Colitis"
+new_metadata <- new_metadata %>% dplyr::select(pathology)
+
+luoma <- AddMetaData(luoma, metadata = new_metadata)
+
+```
