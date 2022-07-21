@@ -20,6 +20,12 @@ custom_colors <- function(pal) {
               "non-PM" = "#33a02c"))
   }
   
+  if (pal == "islets") {
+    return(c("Insulitis" = "darkred",
+             "Peri.insulitis" = "royalblue3",
+             "Normal" = "seagreen4"))
+  }
+  
   if (pal == "colitis") {
     return(c("healthy" = "black",
              "ICI" = "#6B1937",

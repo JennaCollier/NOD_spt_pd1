@@ -2,7 +2,7 @@ geomx_analysis
 ================
 2022-06-29
 
-## GeoMX analysis
+## Introduction
 
 In this analysis, we looked at various proteins within beta islets of
 NOD mice age 16-22 weeks of age. The three treatment groups examined
@@ -33,15 +33,7 @@ require(nlme, quietly = T) #mixed linear model analysis
 require(ggrepel, quietly = T) #labels for pca plots
 require(tibble, quietly = T) #rownames_to_column function
 require(useful, quietly = T) #corner function to peek at data.frames
-```
-
-``` r
-treatment_colors <- c("IgG" = "black", 
-                      "Spt" = rgb(253,128,8, maxColorValue = 255), 
-                      "PD1" = rgb(128,0,128, maxColorValue = 255))
-islet_score_colors <- c("Insulitis" = "darkred",
-                  "Peri.insulitis" = "royalblue3",
-                  "Normal" = "seagreen4")
+source("scripts/utils.R") #custom color palettes
 ```
 
 Read in the data files. One data file contains the code-friendly protein
@@ -233,6 +225,8 @@ geomx %>% group_by(treatment,islet_score,label) %>% tally() %>% cast(label+islet
 geomx <- geomx %>% filter(islet_score != "Normal" & label == "CD45" | label == "INS")
 ```
 
+## Differences by score and region classification
+
 Examine protein expression broadly across all of the samples based on
 their region of classification (CD45+ or INS+ region) to confirm that
 expression levels generally make sense. CD45+ regions should have higher
@@ -369,8 +363,8 @@ p1 <- melted %>%
                                      vjust = 0.5, 
                                      hjust=1),
           axis.title.x = element_blank()) +
-    scale_color_manual(values = islet_score_colors) +
-    scale_fill_manual(values = islet_score_colors) +
+    scale_color_manual(values = custom_colors("islets")) +
+    scale_fill_manual(values = custom_colors("islets")) +
     { if (sum(p1_vals$p.adj < 0.05) > 0) #check if there are any significant p values, otherwise, don't plot any NS
       add_pvalue(p1_vals %>% filter(p.adj < 0.05),  #only plot significant values
                color = "black",
@@ -462,8 +456,8 @@ p2 <- melted %>%
                                      vjust = 0.5, 
                                      hjust=1),
           axis.title.x = element_blank()) +
-    scale_color_manual(values = islet_score_colors) +
-    scale_fill_manual(values = islet_score_colors) +
+    scale_color_manual(values = custom_colors("islets")) +
+    scale_fill_manual(values = custom_colors("islets")) +
     { if (sum(p2_vals$p.adj < 0.05) > 0) #check if there are any significant p values, otherwise, don't plot any NS
       add_pvalue(p2_vals %>% filter(p.adj < 0.05), #only plot significant values
                color = "black",
@@ -479,6 +473,8 @@ grid.arrange(p1, p2, nrow=2)
 ```
 
 <img src="geomx_analysis_files/figure-gfm/differences in protein expression by islet score (Insulitis/Peri.Insulitis)-1.png" width="900px" />
+
+## PCA analysis
 
 There are no significant differences between CD45+ regions within islets
 with insulitis vs. peri-insulitis. The only identified differences were
@@ -505,13 +501,13 @@ shapes <- shapes[as.numeric(factor(df_for_pca$islet_score))]
 plot(pca_scores$sites[,1],
      pca_scores$sites[,2],
      pch = shapes,
-     col = paste(treatment_colors[df_for_pca$treatment]),
+     col = paste(custom_colors("treatments")[df_for_pca$treatment]),
      xlim = c(-3,3),
      ylim = c(-3,3),
      cex=3)
 ordiellipse(prin_comp, factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), 
             conf=0.90, 
-            col = treatment_colors, 
+            col = custom_colors("treatments"), 
             lwd = 2)
 ```
 
@@ -547,14 +543,14 @@ shapes <- shapes[as.numeric(factor(df_for_pca$islet_score))]
 plot(pca_scores$sites[,1],
      pca_scores$sites[,2],
      pch = shapes,
-     col = paste(treatment_colors[df_for_pca$treatment]),
+     col = paste(custom_colors("treatments")[df_for_pca$treatment]),
      xlim = c(-4,3),
      ylim = c(-2,4),
      cex=3)
 ordiellipse(prin_comp, 
             factor(df_for_pca$treatment, levels = c("IgG","Spt","PD1")), 
             conf=0.90, 
-            col = treatment_colors, 
+            col = custom_colors("treatments"), 
             lwd = 2)
 ```
 
@@ -595,7 +591,7 @@ pca_cd45 <- df_all %>%
     geom_point(size = 4, 
                alpha = 0.6) +
     stat_ellipse(level = 0.9) + #90% confidence intervals
-    scale_color_manual(values = treatment_colors) +
+    scale_color_manual(values = custom_colors("treatments")) +
     theme_minimal() +
     theme(panel.grid = element_blank(),
           axis.text = element_blank(),
@@ -615,7 +611,7 @@ pca_ins <- df_all %>%
     geom_point(size = 4, 
                alpha = 0.6) +
     stat_ellipse(level = 0.9) + #90% confidence intervals
-    scale_color_manual(values = treatment_colors) +
+    scale_color_manual(values = custom_colors("treatments")) +
     theme_minimal() +
     theme(panel.grid = element_blank(),
           axis.text = element_blank(),
@@ -642,7 +638,7 @@ weights_cd45 <- pca_weights %>%
     filter(label == "CD45") %>%
     ggplot(aes(x = PC1, y = PC2)) +
     facet_wrap(~ label, scales = "free") +
-    scale_color_manual(values = treatment_colors) +
+    scale_color_manual(values = custom_colors("treatments")) +
     theme_minimal() +
     theme(panel.grid = element_blank(),
           axis.text = element_blank(),
@@ -662,7 +658,7 @@ weights_ins <- pca_weights %>%
     filter(label == "INS") %>%
     ggplot(aes(x = PC1, y= PC2)) +
     facet_wrap(~ label, scales = "free") +
-    scale_color_manual(values = treatment_colors) +
+    scale_color_manual(values = custom_colors("treatments")) +
     theme_minimal() +
     theme(panel.grid = element_blank(),
           axis.text = element_blank(),
@@ -686,47 +682,74 @@ grid.arrange(weights_cd45, weights_ins, nrow = 1)
 
 ![](geomx_analysis_files/figure-gfm/ggplot%20of%20PCA%20weights-1.png)<!-- -->
 
+# Treatment-associated differences
+
 Next, the differences between treatment groups will be analyzed by
 generating volcano plots. Here is an example of the comparison between
 PD1 and Spt. There are no significant differences.
 
 ``` r
-meltednrml <- melted %>% filter(label == "CD45") %>% dplyr::select(-islet_score)
-meltednrml$treatment <- relevel(meltednrml$treatment, ref = "PD1")
+meltednrml <- melted %>% 
+                filter(label == "CD45") %>% #examine the CD45 gated regions
+                filter(!protein %in% c("Rt_IgG2b","Rb_IgG","Rt_IgG2a","CD45","INS","S6","GFP","MHCII","GAPDH","Histone.H3","PanCk")) %>% #remove housekeeping genes and irrelevant genes not in the dataset (GFP is not in this mouse and MHCII is different in NOD)
+                dplyr::select(-islet_score) 
+meltednrml$treatment <- relevel(meltednrml$treatment, ref = "PD1") #use PD1 as the reference group
 df <- data.frame()
 
 for (current_protein in as.character(unique(meltednrml$protein))) {
   tmp <- meltednrml %>% 
-    filter(protein == current_protein)
-  tmp <- data.frame(summary(lme(expression ~ treatment, random = list(~1|mouse, ~1|scan_id), data = tmp))$tTable[-1,]) %>% 
-    rownames_to_column("comparison") %>% 
-    mutate(protein = current_protein, ref = "PD1", comparison = gsub("treatment", "", comparison))
-  df <- rbind(df, tmp)
+            filter(protein == current_protein)
+  tmp <- data.frame(summary(lme(expression ~ treatment, #mixed linear model to look at correlation of expression to treatment group
+                                random = list(~1|mouse, #control for the mouse examined
+                                              ~1|scan_id), #also control for each scan
+                                data = tmp))$tTable[-1,]) %>% 
+          rownames_to_column("comparison") %>% #move the treatment group being compared to a column
+          mutate(protein = current_protein, ref = "PD1", comparison = gsub("treatment", "", comparison)) #clean up
+  df <- rbind(df, tmp) #add the temporary df with one protein to the df with data for all the proteins
 }
 
 avgs <- meltednrml %>% 
-  group_by(treatment,protein) %>% 
-  summarize(avg = mean(expression), .groups = "keep")
+          group_by(treatment, protein) %>% 
+          summarize(avg = mean(expression), .groups = "keep") #calculate the mean expression for each protein within each treatment
 
-tbl <- merge(df, avgs %>% cast(protein~treatment,value = "avg"), by = c("protein"))
-tbl <- tbl %>% mutate(log2FC = ifelse(comparison == "Spt", log2(Spt/PD1), log2(IgG/PD1)))
-pd1_v_spt <- tbl %>% filter(comparison == "Spt")
-pd1_v_spt$p.adj <- p.adjust(pd1_v_spt$p.value, method = "BH")
+tbl <- merge(df, avgs %>% cast(protein ~ treatment, value = "avg"), by = c("protein")) #merge the df with the casted averages (wide format)
+tbl <- tbl %>% mutate(log2FC = ifelse(comparison == "Spt", log2(PD1/Spt), log2(PD1/Spt))) #calculate the log fold change based on the desired comparison
+pd1_v_spt <- tbl %>% 
+              filter(comparison == "Spt") %>% #only select the relevant comparison
+              dplyr::select(-IgG) #remove column containing average values that aren't relevant
+pd1_v_spt$p.adj <- p.adjust(pd1_v_spt$p.value, method = "BH") #adjust the p values using BH
 
+log2FC_cutoff <- 1.25 #define a cutoff log2fc
+pd1_v_spt$log2FC_signif <- case_when(pd1_v_spt$log2FC > log2FC_cutoff ~ "PD1",
+                              pd1_v_spt$log2FC < -log2FC_cutoff ~ "Spt",
+                              TRUE ~ "none")
+
+## PLOT THE DATA
+proteins_of_interest <- c("CTLA4","Ki.67","CD4","Tim3","LAG3","PD.1","CD8a")
 pd1_v_spt %>%
-    ggplot(aes(x=log2FC,y=-log10(p.adj))) + 
-    theme_minimal() + 
-    theme(panel.grid = element_blank(),
-          panel.border = element_rect(color="grey10", fill = NA)) +
-    geom_hline(yintercept = -log10(0.05), color = "grey90") + 
-    geom_vline(xintercept = c(-0.5,0.5), color = "grey90") +
-    geom_point() + 
-    scale_x_continuous(limits = c(-3,3)) +
-    scale_y_continuous(limits = c(0,2)) +
-    geom_text_repel(data = subset(pd1_v_spt, p.adj < 0.5 & abs(log2FC) > 0.5), aes(label=protein))
+  ggplot(aes(x = log2FC, 
+             y = -log10(p.adj),
+             color = log2FC_signif)) + 
+  theme_minimal() + 
+  theme(panel.grid = element_blank(),
+        text = element_text(size = 15),
+        panel.border = element_rect(fill = NA, color = "black")) +
+  labs(x = "Average Log2 Fold Change (PD1 / Spt)",
+       y = expression(-log[10]~(Adjusted~p~value)),
+       title="CD45+ regions") +
+  #geom_hline(yintercept = -log10(0.05), color = "grey90") + 
+  geom_vline(xintercept = c(-log2FC_cutoff, log2FC_cutoff), color = "grey90") +
+  geom_point(size = 2) + 
+  scale_x_continuous(limits = c(-3, 3)) +
+  scale_color_manual(values = custom_colors("treatments")) +
+  #scale_y_continuous(limits = c(0, 1.5)) +
+  geom_label_repel(data = subset(pd1_v_spt, protein %in% proteins_of_interest), aes(label = protein, color = log2FC_signif),
+                   label.size = NA,
+                   label.padding = 0.2, 
+                   na.rm = TRUE,
+                   fill = alpha(c("white"), 0.8), 
+                   size = 7, 
+                   max.overlaps = 50) 
 ```
 
-    ## Warning: ggrepel: 42 unlabeled data points (too many overlaps). Consider
-    ## increasing max.overlaps
-
-![](geomx_analysis_files/figure-gfm/Protein%20expression%20between%20treatment%20groups-1.png)<!-- -->
+![](geomx_analysis_files/figure-gfm/Protein%20expression%20between%20PD1%20and%20Spt-1.png)<!-- -->
