@@ -438,7 +438,7 @@ cd4 <- RenameIdents(cd4,
                     "1" = "Treg_resting",
                     "2" = "Treg_eff",
                     "3" = "Tcon_cm",
-                    "4" = "Tcon_Tfh",
+                    "4" = "Tcon_eff",
                     "5" = "Tcon_effmem",
                     "6" = "Recently_activated",
                     "7" = "Tcon_cm",
@@ -532,16 +532,51 @@ write.table(seurat_markers,"output/all_clusters_markers.tsv", sep = "\t", quote 
 #identify conserved genes within cluster groups
 #central memory for example
 seurat_markers %>% filter(cluster %in% c("CD8_cm","Tcon_cm")) %>% group_by(gene) %>% filter(n() > 1) %>% data.frame() #example
-cm_genes <- seurat_markers %>% filter(cluster %in% c("CD8_cm","Tcon_cm")) %>% group_by(gene) %>% filter(n() > 1) %>% pull(gene) %>% unique()
+celltype_genes <- c("Cd4", "Cd8a", "Cd8b1", "Foxp3", "Ikzf2")
 mem_genes <- seurat_markers %>% filter(cluster %in% c("CD8_mem","Tcon_mem")) %>% group_by(gene) %>% filter(n() > 1) %>% pull(gene) %>% unique()
+cm_genes <- seurat_markers %>% filter(cluster %in% c("CD8_cm","Tcon_cm")) %>% group_by(gene) %>% filter(n() > 1) %>% pull(gene) %>% unique()
+exh_genes <- c("Tox", seurat_markers %>% filter(cluster %in% c("CD8_pexh","CD8_texh")) %>% group_by(gene) %>% filter(n() > 1) %>% pull(gene) %>% unique())
 eff_genes <- seurat_markers %>% filter(cluster %in% c("CD8_eff","Tcon_eff","CD8_effmem","Tcon_effmem")) %>% group_by(gene) %>% filter(n() > 1) %>% pull(gene) %>% unique()
 slec_genes  <- unique(c("Klrg1","Cx3cr1","Zeb2", seurat_markers %>% filter(cluster == "CD8_slec") %>% top_n(20, wt = avg_log2FC) %>% pull(gene)))
-treg1_genes <- seurat_markers %>% filter(cluster == "Treg_resting") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()
-treg2_genes <- seurat_markers %>% filter(cluster == "Treg_eff") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()
+treg_genes <- c(unique(seurat_markers %>% filter(cluster == "Treg_resting") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique(), 
+                    seurat_markers %>% filter(cluster == "Treg_eff") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()))
+tfh_genes <- seurat_markers %>% filter(cluster == "Tcon_Tfh") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()
+th21_genes <- seurat_markers %>% filter(cluster == "Tcon_Th21") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()
 acinar_genes <- seurat_markers %>% filter(cluster == "Acinar_contaminated") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()
-ifn_genes <- seurat_markers %>% filter(cluster == "Interferon_sensing") %>% filter(grepl("Is|If|Stat1", gene))
+ifn_genes <- seurat_markers %>% filter(cluster == "Interferon_sensing") %>% filter(grepl("Is|If|Stat1", gene)) %>% pull(gene)
 activation_genes <- seurat_markers %>% filter(cluster == "Recently_activated") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()
-proliferating_genes <- seurat_markers %>% filter(cluster == "Proliferating") %>% top_n(50, wt = avg_log2FC) %>% pull(gene) %>% unique()
+proliferating_genes <- seurat_markers %>% filter(cluster == "Proliferating") %>% top_n(20, wt = avg_log2FC) %>% pull(gene) %>% unique()
+
+all_genes <- rbind(data.frame(group = "celltype", gene = celltype_genes),
+                         data.frame(group = "memory", gene = mem_genes),
+                        data.frame(group = "central memory", gene = cm_genes),
+                        data.frame(group = "exhaustion", gene = exh_genes),
+                        data.frame(group = "effector", gene = eff_genes),
+                        data.frame(group = "slec-like", gene = slec_genes),
+                        data.frame(group = "treg", gene = treg_genes),
+                        data.frame(group = "tfh", gene = tfh_genes),
+                        data.frame(group = "th21", gene = th21_genes),
+                        data.frame(group = "acinar-contaminated", gene = acinar_genes),
+                        data.frame(group = "interferon-sensing", gene = ifn_genes),
+                        data.frame(group = "activation", gene = activation_genes),
+                        data.frame(group = "proliferation", gene = proliferating_genes))
+all_genes <- all_genes %>% filter(!duplicated(gene))
+all_genes <- merge(all_genes, as.data.frame(AverageExpression(seurat_integrated, features = all_genes$gene, assays = "RNA", group.by = "seurat_clusters")$RNA) %>% rownames_to_column("gene"), by = "gene")
+
+write.table(all_genes, 
+            "output/cluster_gene_expression_for_morpheus.tsv", 
+            quote = F, 
+            row.names = F, 
+            sep = "\t")
+
+top50 <- merge(seurat_markers[,c("cluster","gene")], 
+               as.data.frame(AverageExpression(seurat_integrated, features = all_genes$gene, assays = "RNA", group.by = "seurat_clusters")$RNA) %>% rownames_to_column("gene"), by = "gene") %>% 
+         filter(!duplicated(gene))
+write.table(top50, 
+            "output/cluster_top50gene_expression_for_morpheus.tsv", 
+            quote = F, 
+            row.names = F, 
+            sep = "\t")
 ```
 
 Now that the CD4 and CD8 T cells have been identified, next fix the clonotype designations so that only CD8 or CD4 T cell clones are distinguished. Note that **celltype** is now considered:
@@ -616,6 +651,27 @@ new_metadata <- new_metadata %>%
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 seurat_integrated$clonotype_shared_tissues <- factor(seurat_integrated$clonotype_shared_tissues, levels = c("pancreas PM", "pancreas non-PM", "pLN PM", "blood PM", "blood non-PM", "pLN non-PM"))
 seurat_integrated$pancreas_matching <- factor(seurat_integrated$pancreas_matching, levels = c("non-PM", "PM"))
+```
+
+```{r identify celltype shared clonotypes (Tcon/Treg)}
+shared_clonotypes <- seurat_integrated@meta.data %>% 
+                      filter(!is.na(clonotype_id) & cd4_or_cd8 == "CD4") %>%
+                      group_by(celltype, clonotype_id) %>% 
+                      tally() %>% 
+                      group_by(clonotype_id) %>%
+                      summarize(clonotype_celltype_groups = paste(sort(celltype), collapse = "&"), .groups = "keep") %>% #be sure to sort the tissue terms before collapsing
+                      arrange(desc(clonotype_celltype_groups)) %>% 
+                      data.frame()
+
+shared_clonotypes <- setNames(as.character(shared_clonotypes$clonotype_celltype_groups), shared_clonotypes$clonotype_id)
+
+new_metadata <- seurat_integrated@meta.data %>% 
+                  rownames_to_column('barcode') %>%
+                  mutate(clonotype_celltype_groups = shared_clonotypes[clonotype_id]) %>%
+                  column_to_rownames('barcode') %>%
+                  dplyr::select(clonotype_celltype_groups) 
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+seurat_integrated$clonotype_celltype_groups <- factor(seurat_integrated$clonotype_celltype_groups, levels = c("Tcon", "Treg", "Tcon&Treg"))
 ```
 
 Next, gene signatures will be added to the Seurat to plot gene module scores. These gene signatures were gathered from various papers and also msigdb:
@@ -709,34 +765,105 @@ new_metadata <- as.data.frame(t(data.frame(seurat_integrated@assays$FB@data)))
 colnames(new_metadata) <- "NRPv7_TotalSeqC"
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 new_metadata <- seurat_integrated@meta.data %>% 
-                  mutate(tetramer_specificity = ifelse(NRPv7_TotalSeqC > 1.5 & celltype == "CD8", #cutoff for specificity
+                  mutate(tetramer_binding = ifelse(NRPv7_TotalSeqC > 1.5 & celltype == "CD8", #cutoff for specificity
                                                  "NRPv7", 
                                                  "unknown")) %>%
-                  dplyr::select(tetramer_specificity)
+                  dplyr::select(tetramer_binding)
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 
 sample_names <- list.files("data/GSE151652") #all samples are within individual folders
-sample_names
+sample_names <- sample_names[grepl("consensus", sample_names)]
 
-tetramer_tcrs <- list() #list containing all of the tcr data
+tetramer_tcrs <- read.table(paste0("data/GSE151652/", sample_names[1]), sep = ",", header = T)[,c("clonotype_id","chain","cdr3","reads","umis")] %>%
+                  group_by(clonotype_id, chain) %>%  
+                  arrange(desc(reads), desc(umis)) %>% 
+                  top_n(1, umis) %>%  #select TCR by number of UMIs
+                  top_n(1, reads) %>% #break ties by taking TCR with highest number of reads
+                  dplyr::slice(1) %>% #pick top TCR at random if the above are equal using slice
+                  cast(clonotype_id ~ chain, value = "cdr3") %>% 
+                  filter(!is.na(TRA) | is.na(TRB)) %>%
+                  dplyr::select(-clonotype_id) %>%
+                  unique()
 
-for (condition in conditions) {
-  tetramer_tcrs <- read.table(paste0("data/GSE151652", sample_name))$V1
+for (sample_name in sample_names[-1]) {
+  tetramer_tcrs <- rbind(tetramer_tcrs,
+                         read.table(paste0("data/GSE151652/", sample_name), sep = ",", header = T)[,c("clonotype_id","chain","cdr3","reads","umis")] %>%
+                  group_by(clonotype_id, chain) %>%  
+                  arrange(desc(reads), desc(umis)) %>% 
+                  top_n(1, umis) %>%  #select TCR by number of UMIs
+                  top_n(1, reads) %>% #break ties by taking TCR with highest number of reads
+                  dplyr::slice(1) %>% #pick top TCR at random if the above are equal using slice
+                  cast(clonotype_id ~ chain, value = "cdr3") %>% 
+                  filter(!is.na(TRA) | is.na(TRB)) %>%
+                  dplyr::select(-clonotype_id) %>%
+                  unique())
 }
 
+tetramer_tcrs <- unique(tetramer_tcrs)
+tetramer_tcrs$cdr3_combined <- paste0(tetramer_tcrs$TRA, tetramer_tcrs$TRB)
+
+new_metadata <- seurat_integrated@meta.data %>% 
+                  mutate(andreas_tetramer_specificity = ifelse(paste0(TRA.cdr3,TRB.cdr3) %in% tetramer_tcrs$cdr3_combined,"NRPv7", NA_character_)) %>% 
+                  dplyr::select(andreas_tetramer_specificity)
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
 #use TCRtypes to determine specificity
-# tbl <- data.frame(seurat_integrated@meta.data %>%
-#         filter(!is.na(tcrtype_id)) %>%
-#         group_by(tetramer_specificity, tcrtype_id) %>% 
-#         tally() %>% 
-#         cast(tcrtype_id ~ tetramer_specificity, value = "n")) %>%
-#         arrange(desc(NRPv7))
-# tbl[is.na(tbl)] <- 0
-# nrpv7_tcrtypes <- tbl %>% filter(NRPv7 > unknown) %>% pull(tcrtype_id) #consider a cell NRPv7 positive if there is more NRPv7 positive than negative cells
-# new_metadata <- seurat_integrated@meta.data %>%
-#                   mutate(tetramer_specificity = ifelse(tcrtype_id %in% nrpv7_tcrtypes, "NRPv7", "unknown")) %>%
-#                   dplyr::select(tetramer_specificity)
-# seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+tbl <- data.frame(seurat_integrated@meta.data %>%
+        filter(!is.na(tcrtype_id) & tissue == "pancreas") %>% #only confident in pancreas staining
+        group_by(tetramer_binding, tcrtype_id) %>%
+        tally() %>%
+        cast(tcrtype_id ~ tetramer_binding, value = "n")) %>%
+        arrange(desc(NRPv7))
+tbl[is.na(tbl)] <- 0
+nrpv7_tcrtypes <- tbl %>% filter(NRPv7 > unknown) %>% pull(tcrtype_id) #consider a cell NRPv7 positive if there is more NRPv7 positive than negative cells
+new_metadata <- seurat_integrated@meta.data %>%
+                  mutate(tetramer_specificity = ifelse(tcrtype_id %in% nrpv7_tcrtypes, "NRPv7", "unknown")) %>%
+                  dplyr::select(tetramer_specificity)
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+cumulative_sums <- seurat_integrated@meta.data %>% 
+                            filter(!is.na(clonotype_id) & tissue == "pancreas") %>% 
+                            group_by(treatment, clonotype_id) %>% 
+                            tally() %>% 
+                            group_by(treatment) %>% 
+                            mutate(prcnt = n*100/sum(n)) %>% 
+                            group_by(treatment) %>% 
+                            arrange(treatment, desc(prcnt)) %>% 
+                            mutate(cs = cumsum(prcnt))
+
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = cumulative_sums$clonotype_id)
+nrpv7_clonos <- seurat_integrated@meta.data %>% filter(tetramer_specificity == "NRPv7") %>% pull(clonotype_id) %>% unique()
+cumulative_sums$tetramer_specificity <- ifelse(cumulative_sums$clonotype_id %in% nrpv7_clonos, "NRPv7", "unknown")
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = cumulative_sums$clonotype_id)
+
+p_top50_clonos <- cumulative_sums %>% 
+                            group_by(treatment) %>% 
+                            slice_head(n = 50) %>% 
+                            ggplot(aes(x = clonotype_id, 
+                                       y = cs, 
+                                       color = treatment)) + 
+                            geom_point() + 
+                            geom_segment(aes(xend = clonotype_id, 
+                                             yend = cs, 
+                                             x = clonotype_id, 
+                                             y = 0, 
+                                             color = tetramer_specificity)) + 
+                            scale_color_manual(values = custom_colors("tetramer")) +
+                            scale_y_continuous(expand = c(0, 0)) +
+                            theme_minimal() +
+                            theme(panel.grid = element_blank(),
+                                  panel.spacing.x = unit(0, "lines"),
+                                  text = element_text(size = 15),
+                                  axis.text.x = element_blank(),
+                                  panel.border = element_rect(colour = "black", 
+                                                              fill = NA, 
+                                                              size = 1),
+                                  legend.position = "none") +
+                            labs(x = "Top 50 clonotypes", 
+                                 y = paste0("Cumulative % CD8 TCRs")) +
+                            facet_wrap(~ treatment, scales = "free_x")
 ```
 
 Finally, add the new metadata from the integrated Seurat back to the separate Seurats of the CD4 and CD8 T cells and then save.
