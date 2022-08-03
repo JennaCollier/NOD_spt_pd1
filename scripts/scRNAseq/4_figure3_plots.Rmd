@@ -53,21 +53,21 @@ p_cd4_panonly_cluster <- pan4@meta.data %>%
                             theme(axis.title = element_blank(),
                                   axis.text = element_blank(),
                                   text = element_text(size = 15),
+                                  legend.position = "none",
                                   panel.grid = element_blank()) +
                             labs(x = 'UMAP 1', 
                                  y = 'UMAP 2', 
                                  color = "Seurat clusters",
-                                 title = "CD4+ T cells in the pancreas",
                                  size = "Size of clonotype\n(pancreas only)") +
                             scale_alpha_continuous(range = c(0.4,1)) +
                             scale_size_continuous(range=c(1,3)) +
-                            geom_label_repel(data = pan4_cls, #change depending on Seurat used
-                                 mapping = aes(x = U1,
-                                               y = U2, 
-                                               label = seurat_clusters), 
-                                 size = 5, 
-                                 min.segment.length = Inf, 
-                                 show.legend = FALSE) +
+                            # geom_label_repel(data = pan4_cls, #change depending on Seurat used
+                            #      mapping = aes(x = U1,
+                            #                    y = U2, 
+                            #                    label = seurat_clusters), 
+                            #      size = 5, 
+                            #      min.segment.length = Inf, 
+                            #      show.legend = FALSE) +
                             guides(color = guide_legend(override.aes = list(alpha=1, 
                                                                           size=5, 
                                                                           shape=19)), 
@@ -89,13 +89,13 @@ p_cd4_panonly_treatments <- pan4@meta.data %>%
                               theme_minimal() +
                               theme(axis.title = element_blank(),
                                     axis.text = element_blank(),
+                                    strip.text = element_blank(),
                                     text = element_text(size = 15),
                                     panel.grid = element_blank(),
                                     legend.position = "none") +
                               labs(x = 'UMAP 1', 
                                    y = 'UMAP 2', 
                                    color = "Seurat clusters",
-                                   title = "CD4+ T cells in the pancreas",
                                    size = "Size of clonotype\n(pancreas only)") +
                               scale_alpha_continuous(range = c(0.4,1)) +
                               scale_size_continuous(range=c(1,3)) +
@@ -103,14 +103,14 @@ p_cd4_panonly_treatments <- pan4@meta.data %>%
                               scale_color_manual(values = custom_colors("clusters"),
                                                  limits = force) #drops unused clusters in legend
 
-grid.arrange(p_cd4_panonly_cluster, p_cd4_panonly_treatments, widths = c(3, 6))
+grid.arrange(p_cd4_panonly_cluster, p_cd4_panonly_treatments, widths = c(1, 3))
 ```
 
 Next, a stacked bar plot of the treatment group distribution within each seurat cluster:
 ```{r stacked bar chart of treatment groups per seurat cluster}
 p_treatment_per_seurat_cluster <- pan4@meta.data %>% 
                                     ggplot(aes(x = factor(seurat_clusters, 
-                                                        levels = rev(levels(pan8$seurat_clusters))), 
+                                                        levels = rev(levels(pan4$seurat_clusters))), 
                                                         fill = treatment)) + 
                                     geom_bar(stat = "count", 
                                              position = "fill") + 
@@ -202,8 +202,8 @@ p_top50_clonos <- list()
 
 for (cell in c("Tcon", "Treg")) {
 cumulative_sums[[cell]] <- pan4@meta.data %>% 
-                            filter(!is.na(clonotype_id) & celltype == "Tcon") %>% 
-                            group_by(treatment, clonotype_id, pan_clonotype_count) %>% 
+                            filter(!is.na(clonotype_id) & celltype == cell) %>% 
+                            group_by(treatment, clonotype_id) %>% 
                             tally() %>% 
                             group_by(treatment) %>% 
                             mutate(prcnt = n*100/sum(n)) %>% 
@@ -238,56 +238,61 @@ p_top50_clonos[[cell]] <- cumulative_sums[[cell]] %>%
                                                               size = 1),
                                   legend.position = "none") +
                             labs(x = "Top 50 clonotypes", 
-                                 y = paste0("Cumulative % ", cell, " TCRs"),
-                                 title = paste0(cell, " in pancreas")) +
+                                 y = paste0("Cumulative % ", cell, " TCRs")) +
                             facet_wrap(~ treatment, scales = "free_x")
 }
-grid.arrange(p_top50_clonos[["Tcon"]], p_top50_clonos[["Treg"]], nrow = 2)
 
 #boxplot of clone size
+stat.test <- list()
+p_boxplot_clone_size <- list()
+for (cell in c("Tcon", "Treg")) {
+  stat.test[[cell]] <- data.frame(pan4@meta.data %>%
+                            filter(celltype == cell) %>%
+                            group_by(treatment, clonotype_id) %>%
+                            tally() %>%
+                            ungroup() %>%
+                            wilcox_test(n ~ treatment) %>% 
+                            add_xy_position() %>%
+                            mutate(y.position = log10(y.position)))
+  
+  p_boxplot_clone_size[[cell]] <- pan4@meta.data %>%
+                            filter(celltype == cell) %>%
+                              group_by(treatment, clonotype_id) %>%
+                              tally() %>%
+                              ggplot() + 
+                              geom_boxplot(aes(x = treatment, 
+                                         y = log10(n), 
+                                         fill = treatment,
+                                         color = treatment),
+                                         outlier.shape = NA, 
+                                         alpha = 0.5) +
+                              geom_point(aes(x = treatment, 
+                                         y = log10(n), 
+                                         fill = treatment,
+                                         color = treatment),
+                                         position = position_jitter(0.2),
+                                         alpha = 0.1) +
+                              scale_fill_manual(values = custom_colors("treatments")) +
+                              scale_color_manual(values = custom_colors("treatments")) +
+                              theme_minimal() +
+                              #scale_y_continuous(limits = c(0,2)) +
+                              theme(panel.grid = element_blank(),
+                                    legend.position = "none",
+                                    axis.title.x = element_blank(),
+                                    text = element_text(size = 15),
+                                    panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+                              labs(y = expression(log[10](clone~size)),
+                                   color = "Treatment",
+                                   fill = "Treatment") +
+                              add_pvalue(stat.test[[cell]],
+                                         label = "p.adj.signif",
+                                         step.increase = 0.05,
+                                         tip.length = 0,
+                                         label.size = 7) 
+}
 
-stat.test <- data.frame(pan4@meta.data %>%
-                          filter(celltype == "Treg") %>%
-                          dplyr::select(treatment, clonotype_id, pan_clonotype_count) %>%
-                          unique() %>%
-                          wilcox_test(pan_clonotype_count ~ treatment) %>% 
-                          add_xy_position() %>%
-                          mutate(y.position = log10(y.position + 1)))
-
-pan4@meta.data %>%
-  filter(celltype == "Treg") %>%
-    dplyr::select(treatment, clonotype_id, pan_clonotype_count) %>%
-    unique() %>%
-    ggplot() + 
-    geom_boxplot(aes(x = treatment, 
-               y = log10(pan_clonotype_count+1), 
-               fill = treatment,
-               color = treatment),
-               outlier.shape = NA, 
-               alpha = 0.5) +
-    geom_point(aes(x = treatment, 
-               y = log10(pan_clonotype_count+1), 
-               fill = treatment,
-               color = treatment),
-               position = position_jitter(0.2),
-               alpha = 0.1) +
-    scale_fill_manual(values = custom_colors("treatments")) +
-    scale_color_manual(values = custom_colors("treatments")) +
-    theme_minimal() +
-  scale_y_continuous(limits = c(0.3,2.9)) +
-    theme(panel.grid = element_blank(),
-          axis.title.x = element_blank(),
-          text = element_text(size = 15),
-          panel.border = element_rect(colour = "black", fill=NA, size=1)) +
-    labs(y = expression(log[10](clone~size~+1)),
-         color = "Treatment",
-         fill = "Treatment",
-         title = "CD8+ T cells in pancreas\n(unique clonotypes)") +
-    add_pvalue(stat.test,
-               label = "p.adj.signif",
-               step.increase = 0.05,
-               tip.length = 0,
-               label.size = 7) 
+grid.arrange(p_top50_clonos[["Tcon"]], p_boxplot_clone_size[["Tcon"]], nrow = 1, widths = c(2,1))
+grid.arrange(p_top50_clonos[["Treg"]], p_boxplot_clone_size[["Treg"]], nrow = 1, widths = c(2,1))
 
 #DIVERSITY ANALYSIS NEEDS TO BE ADAPTED
 # tcrtypecounts <- rbind(data.frame(pan4@meta.data %>% dplyr::select(treatment, mouse_id, clonotype_id, clonotype_count)))
@@ -355,7 +360,7 @@ tbl <- pan4@meta.data %>%
 tbl$seurat_clusters <- factor(tbl$seurat_clusters, 
                               levels = levels(pan4$seurat_clusters))
 
-for (current_treatment in levels(pan8$treatment)) {
+for (current_treatment in levels(pan4$treatment)) {
   for (current_cluster in levels(tbl$seurat_clusters)) {
     contingency_list[[current_treatment]][[current_cluster]] <- data.frame(treatment = c(pan4@meta.data %>% 
                                filter(seurat_clusters == current_cluster & treatment == current_treatment) %>% count() %>% pull(n),
@@ -374,7 +379,7 @@ for (current_treatment in levels(pan8$treatment)) {
 df$fisher.p.adj <- p.adjust(df$fisher.p.value)
 df$chisq.p.adj <- p.adjust(df$chisq.p.value)
 df$treatment <- factor(df$treatment, levels = c("IgG","Spt","PD1"))
-df$cluster <- factor(df$cluster, levels = levels(pan4$seurat_clusters))
+df$cluster <- factor(df$cluster, levels = rev(levels(pan4$seurat_clusters)))
 
 p_fisher <- df %>%
   ggplot(aes(treatment, cluster, fill=-log10(fisher.p.adj))) + 
@@ -382,7 +387,7 @@ p_fisher <- df %>%
     geom_text(aes(label = round(-log10(fisher.p.adj),0))) +
     scale_fill_distiller(direction = 1, palette = "Blues") +
     theme_minimal() +
-    theme(text = element_text(size=15),
+    theme(text = element_text(size = 10),
           panel.grid = element_blank(),
           axis.title = element_blank(),
           legend.position = "top") +
@@ -395,7 +400,7 @@ p_chisq <- df %>%
     geom_text(aes(label = round(-log10(chisq.p.adj),0))) +
     scale_fill_distiller(direction = 1, palette = "Blues") +
     theme_minimal() +
-    theme(text = element_text(size=15),
+    theme(text = element_text(size = 10),
           panel.grid = element_blank(),
           axis.title = element_blank(),
           legend.position = "top",
@@ -407,14 +412,15 @@ p_chisq <- df %>%
 tbl <- tbl %>% 
   reshape2::melt(id.vars = "seurat_clusters")
 colnames(tbl) <- c("cluster","treatment","cell_num")
-  
+tbl$cluster <- factor(tbl$cluster, levels = rev(levels(pan4$seurat_clusters)))
+
 p_raw <- tbl %>% 
   ggplot(aes(treatment, cluster, fill=cell_num)) + 
     geom_tile() +
     geom_text(aes(label = cell_num)) +
     scale_fill_distiller(direction = 1, palette = "Purples") +
     theme_minimal() +
-    theme(text = element_text(size=15),
+    theme(text = element_text(size = 10),
           panel.grid = element_blank(),
           axis.title = element_blank(),
           legend.position = "top",) +

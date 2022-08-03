@@ -18,7 +18,7 @@ require(reshape, quietly = T) #melting and casting data.frames
 require(ggplot2, quietly = T) #plotting
 require(rstatix, quietly = T) #adding p values to plots
 require(ggprism, quietly = T) #adding p values to plots
-require(ggsci, quirtly = T) #IGV color palette
+require(ggsci, quietly = T) #IGV color palette
 require(patchwork, quietly = T) #adding p values to plots
 require(magrittr, quietly = T) #adding p values to plots
 require(gridExtra, quietly = T) #display multiple plots
@@ -80,7 +80,8 @@ p_treatment <- seurat_integrated@meta.data %>%
                 ggplot(aes(x = allcells_UMAP_1, 
                            y = allcells_UMAP_2, 
                            color = treatment)) + 
-                geom_point(shape = 16, alpha = 0.3) +
+                geom_point(shape = 16, 
+                           alpha = 0.3) +
                 theme_minimal() +
                 theme(axis.title = element_blank(),
                       axis.text = element_blank(),
@@ -96,67 +97,109 @@ p_treatment <- seurat_integrated@meta.data %>%
 
 #plot the UMAP of the different tissues
 p_tissues <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = tissue)) + 
-    geom_point(shape = 16, alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          axis.text = element_blank(),
-          panel.grid = element_blank(),
-          text = element_text(size = 15),
-          legend.position = c(0.1,0.1)) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, 
-                                                  size = 5, 
-                                                  shape = 19))) + 
-    scale_color_manual(values = custom_colors("tissues"))
+              ggplot(aes(x = allcells_UMAP_1, 
+                         y = allcells_UMAP_2, 
+                         color = tissue)) + 
+              geom_point(shape = 16, 
+                         alpha = 0.3) +
+              theme_minimal() +
+              theme(axis.title = element_blank(),
+                    axis.text = element_blank(),
+                    panel.grid = element_blank(),
+                    text = element_text(size = 15),
+                    legend.position = c(0.1,0.1)) +
+              labs(color= NULL,
+                   title = NULL) +
+              guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                            size = 5, 
+                                                            shape = 19))) + 
+              scale_color_manual(values = custom_colors("tissues"))
 
 #plot the UMAP of NRP-v7+ CD8 T cells
 p_tetramer <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = tetramer_specificity)) + 
-    geom_point(shape = 16, alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          axis.text = element_blank(),
-          panel.grid = element_blank(),
-          text = element_text(size = 15),
-          legend.position = c(0.1,0.1)) +
-    labs(color = NULL,
-         title = "All T cells: NRP-v7 tetramer positive") +
-    guides(color = guide_legend(override.aes = list(alpha = 1, 
-                                                  size = 5, 
-                                                  shape = 19))) + 
-    scale_color_manual(values = custom_colors("tetramer"))
+                ggplot(aes(x = allcells_UMAP_1, 
+                           y = allcells_UMAP_2, 
+                           color = tetramer_specificity)) + 
+                geom_point(shape = 16, alpha = 0.3) +
+                theme_minimal() +
+                theme(axis.title = element_blank(),
+                      axis.text = element_blank(),
+                      panel.grid = element_blank(),
+                      text = element_text(size = 15),
+                      legend.position = c(0.1,0.1)) +
+                labs(color = NULL,
+                     title = "All T cells: NRP-v7 tetramer positive") +
+                guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                              size = 5, 
+                                                              shape = 19))) + 
+                scale_color_manual(values = custom_colors("tetramer"))
 
 #plot the UMAP of the different celltypes
 p_celltypes <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = celltype)) + 
-    geom_point(shape = 16, alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          axis.text = element_blank(),
-          panel.grid = element_blank(),
-          text = element_text(size = 15),
-          legend.position = c(0.1,0.1)) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, 
-                                                  size = 5, 
-                                                  shape = 19))) + 
-    scale_color_manual(values = custom_colors("celltypes"))
+                ggplot(aes(x = allcells_UMAP_1, 
+                           y = allcells_UMAP_2, 
+                           color = celltype)) + 
+                geom_point(shape = 16, alpha = 0.3) +
+                theme_minimal() +
+                theme(axis.title = element_blank(),
+                      axis.text = element_blank(),
+                      panel.grid = element_blank(),
+                      text = element_text(size = 15),
+                      legend.position = c(0.1,0.1)) +
+                labs(color= NULL,
+                     title = NULL) +
+                guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                              size = 5, 
+                                                              shape = 19))) + 
+                scale_color_manual(values = custom_colors("celltypes"))
 
 #plot the UMAP of clonotype expansion
 p_expansion <- seurat_integrated@meta.data %>% 
+                ggplot(aes(x = allcells_UMAP_1, 
+                           y = allcells_UMAP_2, 
+                           color = log10(clonotype_count+1))) + 
+                geom_point(shape = 16, 
+                           alpha = 0.6) +
+                theme_minimal() +
+                theme(axis.title = element_blank(),
+                      axis.text = element_blank(),
+                      panel.grid = element_blank(),
+                      text = element_text(size = 15),
+                      legend.position = c(0.2, 0.1),
+                      legend.key.height = unit(0.25,"cm")) +
+                labs(color= NULL,
+                     title = NULL) +
+                scale_color_gradient(na.value ="grey90", low = "black", high = "cyan", breaks = c(0.5,2)) +
+                guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
+
+p_coinh <- seurat_integrated@meta.data %>% 
+            ggplot(aes(x = allcells_UMAP_1, 
+                       y = allcells_UMAP_2, 
+                       color = coinh_count)) + 
+            geom_point(shape = 16, alpha = 0.3) +
+            theme_minimal() +
+            theme(axis.title = element_blank(),
+                  axis.text = element_blank(),
+                  panel.grid = element_blank(),
+                  text = element_text(size = 15),
+                  legend.position = "none") +
+            labs(color= NULL,
+                 title = NULL) +
+            guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                          size = 5, 
+                                                          shape = 19))) +
+                    scale_color_viridis(option = "E", direction = -1)
+
+#show TOX
+data.frame(t(as.matrix(seurat_integrated@assays$RNA["Tox",]))) -> new_metadata
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+p_tox <- seurat_integrated@meta.data %>% 
     ggplot(aes(x = allcells_UMAP_1, 
                y = allcells_UMAP_2, 
-               color = log10(clonotype_count+1))) + 
-    geom_point(shape = 16, alpha = 0.3) +
+               color = Tox)) + 
+    geom_point(shape = 16, 
+               alpha = 0.6) +
     theme_minimal() +
     theme(axis.title = element_blank(),
           axis.text = element_blank(),
@@ -166,10 +209,11 @@ p_expansion <- seurat_integrated@meta.data %>%
           legend.key.height = unit(0.25,"cm")) +
     labs(color= NULL,
          title = NULL) +
-    scale_color_gradient(na.value ="grey90",low = "black", high = "red", breaks = c(0.5,2)) +
+    scale_color_gradient(low = "papayawhip", high = "sienna4") +
     guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
 
-grid.arrange(p_tissues, p_treatment, p_celltypes, p_expansion, nrow = 2)
+
+grid.arrange(p_tissues, p_treatment, p_celltypes, p_expansion, p_tox, p_coinh, nrow = 3)
 ```
 
 Next, create a stacked bar chart showing the distribution of tissues in each Seurat cluster:
@@ -294,7 +338,7 @@ p_top50_clonos
 
 To plot a heatmap of genes of interest across the clusters in Morpheus, the following manually annotated list of genes of interest, **goi**, will be examined. The average expression for each cluster will be determined and this data will be used to plot in Morpheus (Broad institute). The average expression for every gene will be determined to plot the pearson correlations for the Seurat clusters across tissues as well. 
 ```{r heatmap data for Morpheus}
-## average gene expression of each tissue for each cluster - for Pearson correlation
+## average gene expression of each tissue for each cluster/tissue - for Pearson correlation
 avgs <- as.data.frame(t(AverageExpression(seurat_integrated, 
                                           assay = "RNA", 
                                           group.by = c("tissue", "seurat_clusters"))$RNA)) #get average expression for each gene (column) in each tissue/cluster pair (row)
@@ -303,39 +347,18 @@ avgs <- avgs %>%
           mutate(tissue = sapply(tissue_and_cluster, function(x) strsplit(x, "_")[[1]][1]), #parse the tissue out to a separate column
                  seurat_clusters = sapply(tissue_and_cluster, function(x) paste(strsplit(x, "_")[[1]][-1], collapse = "_"))) %>%  #parse the cluster name to a separate column
           relocate(tissue_and_cluster, tissue, seurat_clusters) #move columns to left of data frame
-write.table(avgs, "output/seurat_cluster_avg_expression_all_genes_for_morpheus.tsv", sep = "\t", quote = F, row.names = F) #write the data to table
+write.table(avgs, "output/seurat_cluster_avg_expression_all_genes_cluster_tissue_for_morpheus.tsv", sep = "\t", quote = F, row.names = F) #write the data to table
 
-memory_genes <- c("Sell","Il7r","Bcl2","Lef1","S1pr1")
-eff_genes
-exh_genes <- c("Pdcd1","Havcr2","Lag3","Cd38","Ctla4","Tigit","Cd101","Ctla4","Tox","Tcf7","Slamf6")
-surface <- c("Cd226","Icos","Cd28","Tnfsf9","Tnfsf4","Il2rb","Tnfsf14","Ifngr1","Entpd1","Nrn1")
-eff_genes <- c("Ifng","Fasl","Gzma","Gzmk","Gzmb","Prf1","Tnfsf10","Tnf","Il2","Gzmm","Nkg7","Klrd1","Itgal","Klrg1")
-tf <- c("Batf","Eomes","Bcl6","Stat1","Tbx21","Runx1","Runx3","Prdm1","Nfatc1","Id2","Nfkb2","Hif1a","Bach2","Id3","Satb1","Nfkb1","Tox2","Bcl6","Zeb2","Klf2","Klf6")
-chemokines <- c("Cx3cr1","Ccl5","Ccl4","Ccl3","Cxcr5","Cxcr6","Cxcr3","Ccr7","Ccr9","Cxcl10","Ccr8","S1pr5","Xcl1")
-apoptosis <- c("Casp3","Tnfsf11","Nr4a3","Nfkb1","Nlrp3")
-proliferation <- c("Mki67","Stmn1","Birc5","Pclaf")
-ifnstim <- c("Isg15","Ifi27l2a","Ifit1","Ifit3")
-
-goi <- c(surface,eff_genes,exh_genes,tf,chemokines,apoptosis,proliferation,ifnstim,memory_genes) #concatenate all of the genes of interest
-
-## create a data frame of annotated genes based on function
-goi_annot <- data.frame(gene = goi, 
-           group = c(rep("coinhibtory",length(coinh)),
-                     rep("surface",length(surface)),
-                     rep("effector",length(eff)),
-                     rep("TF",length(tf))
-                     ,rep("chemokines",length(chemokines)),
-                     rep("apoptosis",length(apoptosis)),
-                     rep("proliferation",length(proliferation)),
-                     rep("ifnstim",length(ifnstim))))
-
+## average expression for each cluster for heatmap
+gene_annot <- read.table("output/morpheus/figure1/gene_cluster_heatmap/genes_for_heatmap.tsv", sep = "\t", header = T) #custom curated list of annotated genes of interest
 avgs <- as.data.frame(AverageExpression(seurat_integrated, 
-                                        features = goi, 
+                                        features = gene_tbl$gene, 
                                         assay = "RNA", 
                                         group.by = "seurat_clusters")$RNA) #get average expression for each gene of interest
 avgs <- avgs %>% rownames_to_column("gene")
-avgs <- merge(goi_annot, avgs, by = "gene")
-write.table(avgs, "output/seurat_cluster_avg_expression_curated_genes_for_morpheus.tsv", sep = "\t", quote = F, row.names = F) #write the data to table
+avgs <- merge(gene_annot, avgs, by = "gene")
+write.table(avgs, "output/morpheus/figure1/gene_cluster_heatmap/seurat_cluster_avg_expression_curated_genes_for_morpheus.tsv", sep = "\t", quote = F, row.names = F) #write the data to table
+write.table(seurat_integrated@meta.data %>% group_by(seurat_clusters) %>% summarize(coinh_count = mean(coinh_count)), "output/morpheus/figure1/gene_cluster_heatmap/seurat_cluster_avg_coinh_count_for_morpheus.tsv", row.names = F, quote = F, sep = "\t")
 
 #get the markers that can be used to define each cluster
 seurat_markers <- FindAllMarkers(seurat_integrated, 

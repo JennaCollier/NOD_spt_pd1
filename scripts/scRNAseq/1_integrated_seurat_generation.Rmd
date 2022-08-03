@@ -438,7 +438,7 @@ cd4 <- RenameIdents(cd4,
                     "1" = "Treg_resting",
                     "2" = "Treg_eff",
                     "3" = "Tcon_cm",
-                    "4" = "Tcon_eff",
+                    "4" = "Tcon_prog",
                     "5" = "Tcon_effmem",
                     "6" = "Recently_activated",
                     "7" = "Tcon_cm",
@@ -507,6 +507,7 @@ cluster_levels <- c("CD8_cm", #factor the Seurat clusters to order them by cellt
                     "Tcon_mem",
                     "Tcon_effmem",
                     "Tcon_eff",
+                    "Tcon_prog",
                     "Tcon_Th21",
                     "Tcon_Tfh",
                     "Treg_resting",
@@ -528,6 +529,7 @@ seurat_markers <- FindAllMarkers(seurat_integrated, min.pct = 0.25, only.pos = T
                      group_by(cluster) %>%
                      arrange(desc(avg_log2FC), .by_group = T)
 write.table(seurat_markers,"output/all_clusters_markers.tsv", sep = "\t", quote = F, row.names = F) #save to file
+write.table(seurat_markers %>% group_by(cluster) %>% top_n(50, wt = avg_log2FC), "output/all_clusters_top50markers.tsv", sep = "\t", quote = F, row.names = F) #save to file
 
 #identify conserved genes within cluster groups
 #central memory for example

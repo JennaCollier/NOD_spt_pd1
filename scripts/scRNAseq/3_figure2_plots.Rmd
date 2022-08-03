@@ -18,7 +18,7 @@ require(reshape, quietly = T) #melting and casting data.frames
 require(ggplot2, quietly = T) #plotting
 require(rstatix, quietly = T) #adding p values to plots
 require(ggprism, quietly = T) #adding p values to plots
-require(ggsci, quirtly = T) #IGV color palette
+require(ggsci, quietly = T) #IGV color palette
 require(patchwork, quietly = T) #adding p values to plots
 require(magrittr, quietly = T) #adding p values to plots
 require(gridExtra, quietly = T) #display multiple plots
@@ -58,21 +58,21 @@ p_cd8_panonly_cluster <- pan8@meta.data %>%
                             theme(axis.title = element_blank(),
                                   axis.text = element_blank(),
                                   text = element_text(size = 15),
-                                  panel.grid = element_blank()) +
+                                  panel.grid = element_blank(),
+                                  legend.position = "none") +
                             labs(x = 'UMAP 1', 
                                  y = 'UMAP 2', 
                                  color = "Seurat clusters",
-                                 title = "CD8+ T cells in the pancreas",
                                  size = "Size of clonotype\n(pancreas only)") +
                             scale_alpha_continuous(range = c(0.4,1)) +
-                            scale_size_continuous(range=c(1,3)) +
-                            geom_label_repel(data = pan8_cls, #change depending on Seurat used
-                                 mapping = aes(x = U1,
-                                               y=U2, 
-                                               label = seurat_clusters), 
-                                 size = 5, 
-                                 min.segment.length = Inf, 
-                                 show.legend = FALSE) +
+                            scale_size_continuous(range = c(1,3)) +
+                            # geom_label_repel(data = pan8_cls, #change depending on Seurat used
+                            #      mapping = aes(x = U1,
+                            #                    y = U2, 
+                            #                    label = seurat_clusters), 
+                            #      size = 5, 
+                            #      min.segment.length = Inf, 
+                            #      show.legend = FALSE) +
                             guides(color = guide_legend(override.aes = list(alpha=1, 
                                                                           size=5, 
                                                                           shape=19)), 
@@ -93,6 +93,7 @@ p_cd8_panonly_treatments <- pan8@meta.data %>%
                                          alpha = 0.6) +
                               theme_minimal() +
                               theme(axis.title = element_blank(),
+                                    strip.text = element_blank(),
                                     axis.text = element_blank(),
                                     text = element_text(size = 15),
                                     panel.grid = element_blank(),
@@ -100,7 +101,6 @@ p_cd8_panonly_treatments <- pan8@meta.data %>%
                               labs(x = 'UMAP 1', 
                                    y = 'UMAP 2', 
                                    color = "Seurat clusters",
-                                   title = "CD8+ T cells in the pancreas",
                                    size = "Size of clonotype\n(pancreas only)") +
                               scale_alpha_continuous(range = c(0.4,1)) +
                               scale_size_continuous(range=c(1,3)) +
@@ -108,7 +108,7 @@ p_cd8_panonly_treatments <- pan8@meta.data %>%
                               scale_color_manual(values = custom_colors("clusters"),
                                                  limits = force) #drops unused clusters in legend
 
-grid.arrange(p_cd8_panonly_cluster, p_cd8_panonly_treatments, widths = c(3,6))
+grid.arrange(p_cd8_panonly_cluster, p_cd8_panonly_treatments, widths = c(1,3))
 ```
 
 Next, a stacked bar plot of the treatment group distribution within each seurat cluster:
@@ -273,8 +273,7 @@ p_top50_clonos <- cumulative_sums %>%
                                                       size = 1),
                           legend.position = "none") +
                     labs(x = "Top 50 clonotypes", 
-                         y = "Cumulative % CD8 TCRs",
-                         title = "CD8+ T cells in pancreas") +
+                         y = "Cumulative % CD8 TCRs") +
                     facet_wrap(~ treatment, scales = "free_x")
 p_top50_clonos
 
@@ -286,39 +285,41 @@ stat.test <- data.frame(pan8@meta.data %>%
                           add_xy_position() %>%
                           mutate(y.position = log10(y.position + 1)))
 
-pan8@meta.data %>%
-    dplyr::select(treatment, clonotype_id, pan_clonotype_count) %>%
-    unique() %>%
-    ggplot() + 
-    geom_boxplot(aes(x = treatment, 
-               y = log10(pan_clonotype_count+1), 
-               fill = treatment,
-               color = treatment),
-               outlier.shape = NA, 
-               alpha = 0.5) +
-    geom_point(aes(x = treatment, 
-               y = log10(pan_clonotype_count+1), 
-               fill = treatment,
-               color = treatment),
-               position = position_jitter(0.2),
-               alpha = 0.1) +
-    scale_fill_manual(values = custom_colors("treatments")) +
-    scale_color_manual(values = custom_colors("treatments")) +
-    theme_minimal() +
-  scale_y_continuous(limits = c(0.3, 2.9)) +
-    theme(panel.grid = element_blank(),
-          axis.title.x = element_blank(),
-          text = element_text(size = 15),
-          panel.border = element_rect(colour = "black", fill=NA, size=1)) +
-    labs(y = expression(log[10](clone~size~+1)),
-         color = "Treatment",
-         fill = "Treatment",
-         title = "CD8+ T cells in pancreas\n(unique clonotypes)") +
-    add_pvalue(stat.test,
-               label = "p.adj.signif",
-               step.increase = 0.05,
-               tip.length = 0,
-               label.size = 7) 
+p_boxplot_clone_size <- pan8@meta.data %>%
+                          dplyr::select(treatment, clonotype_id, pan_clonotype_count) %>%
+                          unique() %>%
+                          ggplot() + 
+                          geom_boxplot(aes(x = treatment, 
+                                     y = log10(pan_clonotype_count), 
+                                     fill = treatment,
+                                     color = treatment),
+                                     outlier.shape = NA, 
+                                     alpha = 0.5) +
+                          geom_point(aes(x = treatment, 
+                                     y = log10(pan_clonotype_count+1), 
+                                     fill = treatment,
+                                     color = treatment),
+                                     position = position_jitter(0.2),
+                                     alpha = 0.1) +
+                          scale_fill_manual(values = custom_colors("treatments")) +
+                          scale_color_manual(values = custom_colors("treatments")) +
+                          theme_minimal() +
+                        scale_y_continuous(limits = c(0, 2.9)) +
+                          theme(panel.grid = element_blank(),
+                                axis.title.x = element_blank(),
+                                legend.position = "none",
+                                text = element_text(size = 15),
+                                panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+                          labs(y = expression(log[10](clone~size)),
+                               color = "Treatment",
+                               fill = "Treatment") +
+                          add_pvalue(stat.test,
+                                     label = "p.adj.signif",
+                                     step.increase = 0.05,
+                                     tip.length = 0,
+                                     label.size = 7) 
+
+grid.arrange(p_top50_clonos, p_boxplot_clone_size, widths = c(2,1))
 
 #DIVERSITY ANALYSIS
 tcrtypecounts <- rbind(data.frame(pan8@meta.data %>% dplyr::select(treatment, mouse_id, clonotype_id, clonotype_count)))
@@ -327,8 +328,8 @@ corner(tcrtypecounts)
 tcrtypecounts <- tcrtypecounts %>% filter(!is.na(clonotype_id)) %>% cast(treatment + mouse_id  ~ clonotype_id)
 corner(tcrtypecounts)
 
-totalN <- tcrtypecounts %>% select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
-df <- sapply(tcrtypecounts %>% select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
 corner(df)
 numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
 
@@ -379,7 +380,7 @@ p_cd8_panonly_coinh_umap <- pan8@meta.data %>%
                         ggplot(aes(x = UMAP_1, 
                                    y = UMAP_2, 
                                    color = coinh_count)) + 
-                        geom_point(shape = 16, 
+                        geom_point(shape = 16,
                                    alpha = 0.6) +
                         theme_minimal() +
                         theme(axis.title = element_blank(),
@@ -388,94 +389,105 @@ p_cd8_panonly_coinh_umap <- pan8@meta.data %>%
                               legend.position = c(0.85,0.85),
                               panel.grid = element_blank()) +
                         labs(x = 'UMAP 1', 
-                             y = 'UMAP 2', 
-                             color = "Co-inhibitory\nreceptors\nexpressed",
-                             title = "CD8+ T cells in the pancreas") +
+                             y = 'UMAP 2',
+                             color = NULL) +
                         guides(color = guide_legend(override.aes = list(alpha=1, 
                                                                         size=5, 
                                                                         shape=19)), 
                                size = guide_legend()) +
                         scale_color_viridis(option = "E", direction = -1)
 
-p_cd8_panonly_coinh_violin <- pan8@meta.data %>% 
-                                ggplot(aes(x = treatment, 
-                                         y = coinh_count, 
-                                         fill = treatment,
-                                         color = treatment)) + 
+stat.test <- data.frame(pan8@meta.data %>% 
+                            wilcox_test(coinh_count ~ treatment))
+
+p_cd8_panonly_coinh_violin <-  pan8@meta.data %>% 
+                                  ggplot(aes(x = treatment, 
+                                             y = coinh_count, 
+                                             fill = treatment,
+                                             color = treatment)) + 
                                   geom_violin(adjust = 2, 
                                               scale = "width", 
-                                              trim = F, 
+                                              trim = T, 
                                               alpha = 0.5, 
                                               draw_quantiles = c(0.25,0.5,0.75), 
                                               lwd = 1) +
                                   scale_fill_manual(values = custom_colors("treatments")) +
                                   scale_color_manual(values = custom_colors("treatments")) +
+                                  scale_y_continuous(limits = c(0,7), expand = c(0,0)) +
                                   theme_minimal() +
                                   theme(panel.grid = element_blank(),
+                                        legend.position = "none",
                                         axis.title.x = element_blank(),
                                         text = element_text(size = 15),
                                         panel.border = element_rect(colour = "black", fill=NA, size=1)) +
-                                  labs(y = "Number of co-inhibitory receptors expressed",
-                                       color = "Treatment",
-                                       fill = "Treatment",
-                                       title = "CD8+ T cells in pancreas")
+                                  labs(color = "Treatment",
+                                       fill = "Treatment") +
+                                  add_pvalue(stat.test %>% filter(p.adj < 0.05),
+                                             inherit.aes = F,
+                                             label = "p.adj.signif",
+                                             y.position = c(6.5, 6))
+
+grid.arrange(p_cd8_panonly_coinh_umap, p_cd8_panonly_coinh_violin, nrow = 1, widths = c(2,1))
 
 # TERMINALLY EXHAUSTED MODULE SCORE ALL CELLS
 p_vals <- pan8@meta.data %>% 
             wilcox_test(Miller2019_terminally_exh1 ~ treatment) %>%
             add_xy_position() %>%
             filter(p.adj <= 0.05)
-pan8@meta.data %>% 
-  ggplot(aes(x = treatment,
-             y = Miller2019_terminally_exh1,
-             color = treatment,
-             fill = treatment)) + 
-  geom_violin(adjust=2, 
-              alpha=0.5, 
-              draw_quantiles = c(0.25,0.5,0.75), 
-              lwd=1) + 
-  scale_color_manual(values = custom_colors("treatments")) + 
-  scale_fill_manual(values = custom_colors("treatments")) +  
-  theme_minimal() + 
-  theme(text = element_text(size=15),
-        panel.border = element_rect(fill = NA,
-                                    color = "black"),
-        axis.title.x = element_blank(),
-        panel.grid = element_blank()) +
-  labs(title = "Pancreas CD8+ T cells", 
-       y = "Miller2019 terminally\nexhausted score",
-       color = "Treatment",
-       fill = "Treatment") + 
-  add_pvalue(p_vals,
-               inherit.aes = F,
-               label.size = 8,
-               step.increase = 0.05)
+p_exh_all_cells <- pan8@meta.data %>% 
+                    ggplot(aes(x = treatment,
+                               y = Miller2019_terminally_exh1,
+                               color = treatment,
+                               fill = treatment)) + 
+                    geom_violin(adjust=2, 
+                                alpha=0.5, 
+                                draw_quantiles = c(0.25,0.5,0.75), 
+                                lwd=1) + 
+                    scale_color_manual(values = custom_colors("treatments")) + 
+                    scale_fill_manual(values = custom_colors("treatments")) +  
+                    theme_minimal() + 
+                    theme(text = element_text(size=15),
+                          panel.border = element_rect(fill = NA,
+                                                      color = "black"),
+                          axis.title.x = element_blank(),
+                          legend.position = "none",
+                          panel.grid = element_blank()) +
+                    labs(y = "Miller2019 terminally\nexhausted score",
+                         color = "Treatment",
+                         fill = "Treatment") + 
+                    add_pvalue(p_vals,
+                                 inherit.aes = F,
+                                  tip.length = 0,
+                                 label.size = 8,
+                                 step.increase = 0.05)
 
 # TERMINALLY EXHAUSTED MODULE SCORE BY MOUSE
-pan8@meta.data %>% 
-    group_by(treatment,mouse_id) %>% 
-    summarize(avgs = mean(Miller2019_terminally_exh1)) %>% 
-    ggplot(aes(x = treatment,
-               y = avgs,
-               color = treatment,
-               fill = treatment)) + 
-    geom_violin(adjust = 1,
-                trim = F,
-                alpha = 0.5, 
-                lwd = 1) + 
-    geom_point(size = 5, shape = 21, stroke = 2, alpha = 0.2) +
-    scale_color_manual(values = custom_colors("treatments")) + 
-    scale_fill_manual(values = custom_colors("treatments")) +  
-    theme_minimal() + 
-    theme(text = element_text(size=15),
-          panel.border = element_rect(fill = NA,
-                                      color = "black"),
-          axis.title.x = element_blank(),
-          panel.grid = element_blank()) +
-    labs(title = "Pancreas CD8+ T cells", 
-         y = "Miller2019 terminally\nexhausted score",
-         color = "Treatment",
-         fill = "Treatment")
+p_exh_mice <- pan8@meta.data %>% 
+                group_by(treatment,mouse_id) %>% 
+                summarize(avgs = mean(Miller2019_terminally_exh1)) %>% 
+                ggplot(aes(x = treatment,
+                           y = avgs,
+                           color = treatment,
+                           fill = treatment)) + 
+                geom_violin(adjust = 1,
+                            trim = F,
+                            alpha = 0.5, 
+                            lwd = 1) + 
+                geom_point(size = 5, shape = 1, stroke = 0.5) +
+                scale_color_manual(values = custom_colors("treatments")) + 
+                scale_fill_manual(values = custom_colors("treatments")) +  
+                theme_minimal() + 
+                theme(text = element_text(size=15),
+                      panel.border = element_rect(fill = NA,
+                                                  color = "black"),
+                      legend.position = "none",
+                      axis.title.x = element_blank(),
+                      panel.grid = element_blank()) +
+                labs(y = "Miller2019 terminally\nexhausted score",
+                     color = "Treatment",
+                     fill = "Treatment")
+
+grid.arrange(p_exh_all_cells, p_exh_mice, nrow = 1)
 ```
 
 A Chi squared and Fisher's exact test will be used to measure the differences in the proportions of each cluster. This is done by looping through clusters and treatment groups to build a list of contingency tables:
@@ -514,7 +526,7 @@ df$chisq.p.adj <- p.adjust(df$chisq.p.value, method = "BH")
 
 #factor some variables for subsequent plotting
 df$treatment <- factor(df$treatment, levels = c("IgG","Spt","PD1"))
-df$cluster <- factor(df$cluster, levels = levels(pan8$seurat_clusters))
+df$cluster <- factor(df$cluster, levels = rev(levels(pan8$seurat_clusters)))
 
 p_fisher <- df %>% #plot of Fisher's Exact test results
   ggplot(aes(x = treatment, 
@@ -525,13 +537,12 @@ p_fisher <- df %>% #plot of Fisher's Exact test results
     scale_fill_distiller(direction = 1, 
                          palette = "Blues") +
     theme_minimal() +
-    theme(text = element_text(size = 15),
+    theme(text = element_text(size = 10),
           panel.grid = element_blank(),
           axis.title = element_blank(),
           legend.position = "top") +
     guides(fill = guide_colorbar(ticks.colour = NA)) +
-    labs(title = "CD8+ T cells in pancreas\n(Fisher's Exact test)", 
-         fill = expression(-~log[10]~(p~adjusted)))
+    labs(fill = expression(-~log[10]~(p~adjusted)))
 
 p_chisq <- df %>% #plot of Chi-squared results
   ggplot(aes(x = treatment, 
@@ -542,19 +553,19 @@ p_chisq <- df %>% #plot of Chi-squared results
     scale_fill_distiller(direction = 1, 
                          palette = "Blues") +
     theme_minimal() +
-    theme(text = element_text(size=15),
+    theme(text = element_text(size = 10),
           panel.grid = element_blank(),
           axis.title = element_blank(),
           legend.position = "top",
           axis.text.y = element_blank()) + 
     guides(fill = guide_colorbar(ticks.colour = NA)) +
-    labs(title = "CD8+ T cells in pancreas\n(Chi-squared p values)", 
-         fill = expression(-~log[10]~(p~adjusted)))
+    labs(fill = expression(-~log[10]~(p~adjusted)))
 
 #melt the raw data to plot
 tbl <- tbl %>% 
         reshape2::melt(id.vars = "seurat_clusters")
 colnames(tbl) <- c("cluster", "treatment", "cell_num") #meaningful column names
+tbl$cluster <- factor(tbl$cluster, levels = rev(levels(pan8$seurat_clusters)))
 
 #plot the raw numbers
 p_raw <- tbl %>% 
@@ -566,15 +577,14 @@ p_raw <- tbl %>%
             scale_fill_distiller(direction = 1, 
                                  palette = "Purples") +
             theme_minimal() +
-            theme(text = element_text(size=15),
+            theme(text = element_text(size = 10),
                   panel.grid = element_blank(),
                   axis.title = element_blank(),
                   legend.position = "top",) +
             guides(fill = guide_colorbar(ticks.colour = NA)) +
-            labs(title = "Total CD8+ T cells in pancreas\n", 
-                fill = "T cells in\ncluster")
+            labs(fill = "T cells in\ncluster")
 
-grid.arrange(p_raw, p_fisher, p_chisq, ncol = 3, widths = c(1.5,1.5,1))
+grid.arrange(p_raw, p_fisher, p_chisq, ncol = 3, widths = c(2,2,1.25))
 ```
 
 GSEA will be used to generate dot plots of enriched/interesting gene signatures that differ between CD8+ T cells across the treatment groups. For GSEA, we need the information of all genes, Seurat is just too slow if we test all 20,000 genes, so presto is used to perform a fast Wilcoxon rank sum test. The fgsea() function requires a list of gene sets to check, and a named vector of gene-level statistics, where the names should be the same as the gene names in the pathways list. A currated list of gene signatures will be examined.
