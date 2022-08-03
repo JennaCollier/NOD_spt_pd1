@@ -39,9 +39,9 @@ custom_colors <- function(pal) {
   }
   
   if (pal == "celltypes") {
-    return(c("CD8" = "#fe4a49",
+    return(c("CD8" = "deeppink2",
              "Tcon" = "#011f4b",
-             "Treg" = "#6497b1"))
+             "Treg" = "skyblue"))
   }
   
   if (pal == "clusters") {
@@ -49,7 +49,7 @@ custom_colors <- function(pal) {
              "CD8_mem" = "#749B58FF",
              "CD8_pexh" = "#CE3D32FF",
              "CD8_effmem" = "#466983FF",
-             "CD8_eff" = "#BA6338FF",
+             "CD8_eff" = "#CC9900FF",
              "CD8_slec" = "#5DB1DDFF",
              "CD8_texh" = "#1A0099FF",
              "Tcon_cm" = "#6BD76BFF",
@@ -57,10 +57,11 @@ custom_colors <- function(pal) {
              "Tcon_effmem" = "#924822FF",
              "Tcon_Tfh" = "#5050FFFF",
              "Tcon_Th21" = "#C75127FF",
-             "Tcon_eff" = "#D58F5CFF",
-             "Treg_resting" = "#E4AF69FF",
+             "Tcon_eff" = "#339900FF",
+             "Tcon_prog" = "#FFC20AFF",
+             "Treg_resting" = "#4775FFFF",
              "Treg_eff" = "#D60047FF",
-             "Recently_activated" = "#3B1B53FF",
+             "Recently_activated" = "#7A65A5FF",
              "Acinar_contaminated" = "#CDDEB7FF",
              "Interferon_sensing" = "#612A79FF",
              "Proliferating" = "#AE1F63FF"))
