@@ -91,8 +91,7 @@ p_cd4_panonly_treatments <- pan4@meta.data %>%
                                     axis.text = element_blank(),
                                     strip.text = element_blank(),
                                     text = element_text(size = 15),
-                                    panel.grid = element_blank(),
-                                    legend.position = "none") +
+                                    panel.grid = element_blank()) +
                               labs(x = 'UMAP 1', 
                                    y = 'UMAP 2', 
                                    color = "Seurat clusters",
@@ -101,7 +100,8 @@ p_cd4_panonly_treatments <- pan4@meta.data %>%
                               scale_size_continuous(range=c(1,3)) +
                               facet_wrap(~treatment) +
                               scale_color_manual(values = custom_colors("clusters"),
-                                                 limits = force) #drops unused clusters in legend
+                                                 limits = force, #drops unused clusters in legend
+                                                 guide = "none") 
 
 grid.arrange(p_cd4_panonly_cluster, p_cd4_panonly_treatments, widths = c(1, 3))
 ```
