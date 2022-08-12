@@ -81,7 +81,7 @@ p_treatment <- seurat_integrated@meta.data %>%
                            y = allcells_UMAP_2, 
                            color = treatment)) + 
                 geom_point(shape = 16, 
-                           alpha = 0.3) +
+                           alpha = 0.8) +
                 theme_minimal() +
                 theme(axis.title = element_blank(),
                       axis.text = element_blank(),
@@ -101,7 +101,7 @@ p_tissues <- seurat_integrated@meta.data %>%
                          y = allcells_UMAP_2, 
                          color = tissue)) + 
               geom_point(shape = 16, 
-                         alpha = 0.3) +
+                         alpha = 0.8) +
               theme_minimal() +
               theme(axis.title = element_blank(),
                     axis.text = element_blank(),
@@ -120,7 +120,8 @@ p_tetramer <- seurat_integrated@meta.data %>%
                 ggplot(aes(x = allcells_UMAP_1, 
                            y = allcells_UMAP_2, 
                            color = tetramer_specificity)) + 
-                geom_point(shape = 16, alpha = 0.3) +
+                geom_point(shape = 16, 
+                           alpha = 0.2) +
                 theme_minimal() +
                 theme(axis.title = element_blank(),
                       axis.text = element_blank(),
@@ -139,7 +140,8 @@ p_celltypes <- seurat_integrated@meta.data %>%
                 ggplot(aes(x = allcells_UMAP_1, 
                            y = allcells_UMAP_2, 
                            color = celltype)) + 
-                geom_point(shape = 16, alpha = 0.3) +
+                geom_point(shape = 16, 
+                           alpha = 0.8) +
                 theme_minimal() +
                 theme(axis.title = element_blank(),
                       axis.text = element_blank(),
@@ -157,9 +159,9 @@ p_celltypes <- seurat_integrated@meta.data %>%
 p_expansion <- seurat_integrated@meta.data %>% 
                 ggplot(aes(x = allcells_UMAP_1, 
                            y = allcells_UMAP_2, 
-                           color = log10(clonotype_count+1))) + 
+                           color = log10(clonotype_count))) + 
                 geom_point(shape = 16, 
-                           alpha = 0.6) +
+                           alpha = 0.5) +
                 theme_minimal() +
                 theme(axis.title = element_blank(),
                       axis.text = element_blank(),
@@ -175,20 +177,53 @@ p_expansion <- seurat_integrated@meta.data %>%
 p_coinh <- seurat_integrated@meta.data %>% 
             ggplot(aes(x = allcells_UMAP_1, 
                        y = allcells_UMAP_2, 
-                       color = coinh_count)) + 
-            geom_point(shape = 16, alpha = 0.3) +
+                       color = coinh_count,
+                       alpha = coinh_count)) + 
+            geom_point(shape = 16) +
             theme_minimal() +
             theme(axis.title = element_blank(),
                   axis.text = element_blank(),
                   panel.grid = element_blank(),
-                  text = element_text(size = 15),
-                  legend.position = "none") +
+                  text = element_text(size = 15)) +
             labs(color= NULL,
                  title = NULL) +
             guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                           size = 5, 
                                                           shape = 19))) +
-                    scale_color_viridis(option = "E", direction = -1)
+            scale_color_gradient(low = "bisque", high = "darkslategray")
+
+p_prog <- seurat_integrated@meta.data %>% 
+            ggplot(aes(x = allcells_UMAP_1, 
+                       y = allcells_UMAP_2, 
+                       color = Miller2019_progenitor_exh1)) + 
+            geom_point(shape = 16) +
+            theme_minimal() +
+            theme(axis.title = element_blank(),
+                  axis.text = element_blank(),
+                  panel.grid = element_blank(),
+                  text = element_text(size = 15),
+                  legend.position = "none",
+                  legend.key.height = unit(0.25,"cm")) +
+            labs(color= NULL,
+                 title = NULL) +
+            scale_color_gradient(low = "cornsilk", high = "#CE3D32FF")
+
+p_term <- seurat_integrated@meta.data %>% 
+            ggplot(aes(x = allcells_UMAP_1, 
+                       y = allcells_UMAP_2, 
+                       color = Miller2019_terminally_exh1)) + 
+            geom_point(shape = 16) +
+            theme_minimal() +
+            theme(axis.title = element_blank(),
+                  axis.text = element_blank(),
+                  panel.grid = element_blank(),
+                  text = element_text(size = 15),
+                  legend.position = "none",
+                  legend.key.height = unit(0.25,"cm")) +
+            labs(color= NULL,
+                 title = NULL) +
+            scale_color_gradient(low = "cornsilk", high = "#1A0099FF") +
+            guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
 
 #show TOX
 data.frame(t(as.matrix(seurat_integrated@assays$RNA["Tox",]))) -> new_metadata
@@ -197,7 +232,35 @@ seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 p_tox <- seurat_integrated@meta.data %>% 
     ggplot(aes(x = allcells_UMAP_1, 
                y = allcells_UMAP_2, 
-               color = Tox)) + 
+               color = Tox,
+               alpha = Tox)) + 
+    geom_point(shape = 16) +
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = "none",
+          legend.key.height = unit(0.25,"cm")) +
+    labs(color= NULL,
+         title = NULL) +
+    scale_color_gradient(low = "papayawhip", high = "sienna4") +
+    guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
+
+
+grid.arrange(p_tissues, p_treatment, p_celltypes, p_expansion, p_tox, p_coinh, p_prog, p_term, ncol = 2)
+```
+
+Plot some critical markers of T cells used to identify cell subsets:
+```{r UMAP of markers}
+
+data.frame(t(as.matrix(seurat_integrated@assays$RNA[c("Cd4","Cd8a","Foxp3"),]))) -> new_metadata
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+p_cd4 <- seurat_integrated@meta.data %>% 
+    ggplot(aes(x = allcells_UMAP_1, 
+               y = allcells_UMAP_2, 
+               color = Cd4)) + 
     geom_point(shape = 16, 
                alpha = 0.6) +
     theme_minimal() +
@@ -209,11 +272,47 @@ p_tox <- seurat_integrated@meta.data %>%
           legend.key.height = unit(0.25,"cm")) +
     labs(color= NULL,
          title = NULL) +
-    scale_color_gradient(low = "papayawhip", high = "sienna4") +
+    scale_color_gradient(low = "cornsilk", high = "#011f4b") +
+    guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
+
+p_cd8a <- seurat_integrated@meta.data %>% 
+    ggplot(aes(x = allcells_UMAP_1, 
+               y = allcells_UMAP_2, 
+               color = Cd8a)) + 
+    geom_point(shape = 16, 
+               alpha = 0.6) +
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = c(0.2, 0.1),
+          legend.key.height = unit(0.25,"cm")) +
+    labs(color= NULL,
+         title = NULL) +
+    scale_color_gradient(low = "cornsilk", high = "deeppink2") +
+    guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
+
+p_foxp3 <- seurat_integrated@meta.data %>% 
+    ggplot(aes(x = allcells_UMAP_1, 
+               y = allcells_UMAP_2, 
+               color = Foxp3)) + 
+    geom_point(shape = 16, 
+               alpha = 0.6) +
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = c(0.2, 0.1),
+          legend.key.height = unit(0.25,"cm")) +
+    labs(color= NULL,
+         title = NULL) +
+    scale_color_gradient(low = "cornsilk", high = "skyblue") +
     guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
 
 
-grid.arrange(p_tissues, p_treatment, p_celltypes, p_expansion, p_tox, p_coinh, nrow = 3)
+grid.arrange(p_cd4, p_cd8a, p_foxp3, ncol = 3)
 ```
 
 Next, create a stacked bar chart showing the distribution of tissues in each Seurat cluster:
