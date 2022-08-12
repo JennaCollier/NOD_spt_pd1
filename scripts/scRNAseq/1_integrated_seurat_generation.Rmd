@@ -146,16 +146,16 @@ For cells with multiple TCR assignments, select TCR by the highest number of UMI
 ```{r add TCR information}
 metadata <- data.frame() #initialize an empty dataframe for all of the tcr metadata combined
 
-for (i in 1:length(list.files(path = "data/"))) {
-  condition <- list.files(path = "data/")[i]
+for (i in 1:length(list.files(path = "data/nod/"))) {
+  condition <- list.files(path = "data/nod/")[i]
   
-  tcrdata <- read.csv(paste0("data/", condition, "/filtered_contig_annotations.csv"), header = T)
+  tcrdata <- read.csv(paste0("data/nod/", condition, "/filtered_contig_annotations.csv"), header = T)
   tcrdata$barcode <- sapply(tcrdata$barcode, function(x) sub("-1", "", x), USE.NAMES = F) #remove suffix of -1 at the end of the barcode
   tcrdata$barcode <- paste(condition, tcrdata$barcode, sep = "_") #add prefix
   tcrdata <- tcrdata %>% dplyr::select(barcode, raw_clonotype_id) %>% unique()
   head(tcrdata) #clonotype-centric dataframe
   
-  clonotype_data <- read.csv(paste0("data/", condition, "/consensus_annotations.csv"), header = T)
+  clonotype_data <- read.csv(paste0("data/nod/", condition, "/consensus_annotations.csv"), header = T)
   
   # Find the TCR beta chain for each cell
   trb <- clonotype_data %>% filter(productive == "true", chain == "TRB") %>% 
@@ -286,6 +286,13 @@ p_markers <- FeaturePlot(seurat_integrated, c("Cd4","Cd8a","Foxp3","Mki67"))
 p_cluster + p_markers
 
 #visually identify contaminating clusters based on gene expression and remove them - overclustering helps facilitate this
+seurat_integrated@meta.data %>%
+  group_by(seurat_clusters) %>% 
+  summarize(cd4_percent = 100*sum(Cd4 > 0)/n(), 
+            cd8_percent = 100*sum(Cd8a > 0)/n(), 
+            cd3_percent = 100*sum(Cd3e > 0)/n()) %>% 
+  mutate(to_be_filtered = cd4_percent < 10 & cd8_percent < 10 | cd3_percent < 80) %>% 
+  filter(to_be_filtered == TRUE)
 contaminants <- c(63,56,42,71,84,81,77,68,44,62,17,20,79,37,51,66,76,82)
 seurat_integrated <- subset(seurat_integrated, idents = contaminants, invert = T)
 
