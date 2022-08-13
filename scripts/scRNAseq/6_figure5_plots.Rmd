@@ -12,13 +12,15 @@ knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd
 ```
 
 ```{r libraries, message = FALSE, warning = FALSE}
+require(tidyr)
 require(dplyr, quietly = T) #simple manipulation of data.frames
 require(Seurat, quietly = T) #scRNA-seq analysis
 require(reshape, quietly = T) #melting and casting data.frames
 require(ggplot2, quietly = T) #plotting
 require(rstatix, quietly = T) #adding p values to plots
 require(ggprism, quietly = T) #adding p values to plots
-require(ggsci, quirtly = T) #IGV color palette
+require(ggsci, quietly = T) #IGV color palette
+require(ComplexUpset)
 require(patchwork, quietly = T) #adding p values to plots
 require(magrittr, quietly = T) #adding p values to plots
 require(gridExtra, quietly = T) #display multiple plots
@@ -29,6 +31,8 @@ require(viridis, quietly = T) #viridis color palettes
 require(readxl, quietly = T) #reading Excel files
 require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
 source("scripts/utils.R") #custom color palettes and other functions
+require(tidyr, quietly = T) #pivot_wider for upset data frame preparation
+library(ComplexUpset) #upset plots
 set.seed(1) #set a seed for reproducibility
 ```
 
@@ -59,8 +63,7 @@ p_allcells_shared <- seurat_integrated@meta.data %>%
                             legend.position = "none") +
                       labs(x = 'UMAP 1', 
                            y = 'UMAP 2', 
-                           color=NULL,
-                           title = "All T cells: Clonotypes shared with pancreas") +
+                           color=NULL) +
                       scale_alpha_continuous(range = c(0.4 ,1)) +
                       scale_color_manual(values = custom_colors("clusters")) +
                       scale_size_continuous(range=c(1, 3)) +
@@ -96,6 +99,31 @@ p_allcells_shared_pie <- seurat_integrated@meta.data %>%
   scale_fill_manual(values = custom_colors("clusters"))
 
 grid.arrange(p_allcells_shared, p_allcells_shared_pie, nrow = 2)
+
+#STACKED BAR OF PM/NON-PM ACROSS TISSUES
+p_shared_per_cluster_by_tissue <- seurat_integrated@meta.data %>% 
+    filter(!is.na(pancreas_matching)) %>% #remove T cells where no TCR detected
+    ggplot(aes(x = factor(seurat_clusters, 
+                          levels = rev(levels(seurat_integrated$seurat_clusters))), 
+               fill = pancreas_matching)) + 
+    geom_bar(stat="count", 
+             position = "fill") + 
+    scale_x_discrete(expand = c(0,0)) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1), 
+                       expand=c(0,0)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    labs(title = "T cells in pancreas", 
+         y = "Percent of Seurat Cluster", 
+         x = NULL,
+         fill = NULL) +
+  facet_wrap(~tissue) +
+    scale_fill_manual(values = custom_colors("pm")) +
+    coord_flip()
+p_shared_per_cluster_by_tissue
+
 ```
 
 ```{r UMAP of pancreas only cells}
@@ -116,14 +144,14 @@ p_pan8_shared <- pan8@meta.data %>%
                         axis.text = element_blank(),
                         panel.grid = element_blank(),
                         text = element_text(size = 15),
-                        legend.position = "right") +
+                        legend.position = "none") +
                   labs(color = "Pancreas matching (PM)",
                        title = "CD8+ T cells in pancreas") +
                   scale_color_manual(values = custom_colors("pm")) +
                   guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                                 size = 5, 
                                                                 shape = 19))) +
-                  facet_wrap(~treatment)
+                  facet_wrap(~ treatment, ncol = 1)
 
 p_pan4_shared <- pan4@meta.data %>% 
                   filter(!is.na(pancreas_matching)) %>%
@@ -141,15 +169,15 @@ p_pan4_shared <- pan4@meta.data %>%
                         axis.text = element_blank(),
                         panel.grid = element_blank(),
                         text = element_text(size = 15),
-                        legend.position = "right") +
+                        legend.position = "none") +
                   labs(color = "Pancreas matching (PM)",
                        title = "CD4+ T cells in pancreas") +
                   scale_color_manual(values = custom_colors("pm")) +
                   guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                                 size = 5, 
                                                                 shape = 19))) +
-                  facet_wrap(~treatment)
-grid.arrange(p_pan8_shared, p_pan4_shared, nrow = 2)
+                  facet_wrap(~ treatment, ncol = 1)
+grid.arrange(p_pan8_shared, p_pan4_shared, ncol = 2)
 
 #STACKED BAR PLOT OF SHARED/NON-SHARED
 p_shared_per_cluster <- seurat_integrated@meta.data %>% 
@@ -208,11 +236,152 @@ rbind(pan4@meta.data %>%
          title = "T cells in pancreas")
 ```
 
+Show the top 120 clonotypes shared across all three tissues to look at patterns in seurat clusters.
+```{r top 100 clonotype seurat clusters shared across tissues}
+seurat_integrated@meta.data %>% 
+  filter(clonotype_id %in% paste0("clonotype",c(1:120)) & 
+           clonotype_tissue_groups == "pLN&blood&pancreas" & 
+           celltype == "CD8") %>% 
+  group_by(clonotype_id, treatment, tissue, seurat_clusters) %>% 
+  tally() %>% 
+  ggplot(aes(x=tissue, fill = seurat_clusters, y = n)) + 
+  geom_bar(stat="identity", position = "stack") + 
+  facet_wrap(treatment~clonotype_id) + 
+  scale_fill_manual(values = custom_colors("clusters")) + 
+  theme_minimal() + 
+  theme(legend.position = "none", 
+        panel.grid = element_blank(), 
+        axis.text = element_blank(), 
+        axis.title = element_blank())
+
+clonotypes_of_interest <- c(paste0("clonotype", c(1,7,18,26,28,31,32,35)), paste0("clonotype", c(3,5,10,12,13,14,17,20)), paste0("clonotype", c(4,6,9,30,54,90,96,105)))
+clonotypes_of_interest <- paste0("clonotype", c(7,3,4))
+
+p_topshared_clonotypes <- seurat_integrated@meta.data %>% 
+                            filter(clonotype_id %in% clonotypes_of_interest) %>%
+                            dplyr::select(treatment,
+                                          clonotype_id, 
+                                          seurat_clusters,
+                                          allcells_UMAP_1, 
+                                          allcells_UMAP_2) %>% 
+                            group_by(treatment,
+                                     clonotype_id, 
+                                     seurat_clusters) %>% 
+                            summarise(U1 = mean(allcells_UMAP_1),
+                                      U2 = mean(allcells_UMAP_2),
+                                      num_cells = n(),
+                                      .groups = "keep") %>% 
+                            ggplot() +
+                            geom_point(data = seurat_integrated@meta.data %>%
+                                         dplyr::select(-treatment) %>%
+                                         dplyr::select(-clonotype_id),
+                                       aes(x = allcells_UMAP_1, 
+                                           y = allcells_UMAP_2),
+                                       shape = 16,
+                                       color = "grey90") +
+                            geom_point(aes(x = U1,
+                                           y = U2,
+                                           size = num_cells,
+                                           color = seurat_clusters),
+                                       shape = 16) +
+                            theme_minimal() +
+                            theme(axis.title = element_blank(),
+                                  axis.text = element_blank(),
+                                  panel.grid = element_blank(),
+                                  text = element_text(size = 15),
+                                  legend.position = "none") +
+                            labs(color = NULL) +
+                            scale_color_manual(values = custom_colors("clusters")) +
+                            scale_size_continuous(range = c(3,10)) +
+                            guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                                            size = 5, 
+                                                                            shape = 19))) +
+                            facet_wrap(treatment ~ clonotype_id, ncol = 9) +
+                            geom_text(aes(x = U1, y = U2, label = num_cells), color = "white", size = 3, fontface = "bold")
+
+
+#stacked bar plots of shared clusters in blood and pancreas
+seurat_integrated@meta.data %>% 
+    filter(!is.na(pancreas_matching)) %>% 
+    mutate(peripheral = ifelse(tissue == "pancreas", "pancreas", "periphery")) %>%
+    group_by(treatment, pancreas_matching, cd4_or_cd8, seurat_clusters, peripheral) %>% 
+    tally() %>% 
+    ggplot(aes(x = treatment, 
+               fill = seurat_clusters, 
+               y = n)) + 
+    geom_bar(stat="identity", 
+             position = "fill") + 
+    facet_wrap(peripheral ~ cd4_or_cd8 + pancreas_matching, ncol = 4) + 
+    theme_minimal() + 
+    theme(panel.grid = element_blank()) +
+    scale_fill_manual(values = custom_colors("clusters"))
+# clonos_of_interest <- seurat_integrated@meta.data %>% 
+#                               filter(tissue == "pancreas" & 
+#                                        clonotype_tissue_groups %in% c("pLN&blood&pancreas")) %>% 
+#                               pull(unique(clonotype_id))
+# seurat_integrated@meta.data %>% 
+#     filter(clonotype_id %in% clonos_of_interest) %>% 
+#   group_by(treatment, tissue, cd4_or_cd8, seurat_clusters) %>% 
+#   tally() %>% 
+#   ggplot(aes(x = tissue, 
+#              fill = seurat_clusters, 
+#              y = n)) + 
+#   geom_bar(stat="identity", 
+#            position = "fill") + 
+#   facet_wrap(cd4_or_cd8 ~ treatment) + 
+#   theme_minimal() + 
+#   theme(panel.grid = element_blank()) +
+#   scale_fill_manual(values = custom_colors("clusters"))
+
+#UPSET PLOT
+clonos_of_interest <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups %in% c("pLN&blood&pancreas", "blood&pancreas") & seurat_clusters %in% c("CD8_texh", "CD8_eff", "CD8_mem")) %>% 
+                              dplyr::select(treatment, seurat_clusters, clonotype_id)
+colnames(clonos_of_interest)[which(colnames(clonos_of_interest) == "seurat_clusters")] <- "pan_seurat_cluster"
+
+merge(clonos_of_interest, seurat_integrated@meta.data %>%
+          filter(tissue != "pancreas" & clonotype_id %in% clonos_of_interest$clonotype_id) %>%
+          group_by(clonotype_id, tissue, seurat_clusters) %>%
+          tally() %>%
+          cast(clonotype_id + seurat_clusters ~ tissue, value = "n", fill = 0), by = "clonotype_id") %>% group_by(treatment,pan_seurat_cluster, seurat_clusters) %>% 
+    summarize(pLN = sum(pLN), blood = sum(blood)) %>%
+    data.frame() %>%
+    melt(id.vars = c("treatment", "pan_seurat_cluster", "seurat_clusters")) %>%
+    ggplot(aes(x = variable, 
+               y = value, 
+               fill = seurat_clusters)) +
+    geom_bar(stat = "identity", 
+             position = "fill") + 
+    facet_wrap(treatment ~ pan_seurat_cluster, nrow = 3) + 
+    theme_minimal() + 
+    theme(panel.grid = element_blank(),
+          legend.position = "none") +
+    scale_fill_manual(values = custom_colors("clusters"))
+
+#stacked bar plot of clusters in pancreas by what cluster they are in blood
+merge(clonos_of_interest, seurat_integrated@meta.data %>% 
+          filter(tissue == "blood" & clonotype_id %in% clonos_of_interest$clonotype_id) %>%
+          group_by(clonotype_id, seurat_clusters) %>% 
+          tally(), by = "clonotype_id") %>% group_by(treatment, pan_seurat_cluster, seurat_clusters) %>% summarize(num_cells = sum(n)) %>% group_by(treatment, pan_seurat_cluster) %>%
+    mutate(label_y = ((sum(num_cells) - cumsum(num_cells))/sum(num_cells)))   %>% ggplot(aes(x = pan_seurat_cluster, y = num_cells, fill = seurat_clusters)) +
+    geom_bar(stat="identity", 
+             position = "fill") + 
+    facet_wrap(~treatment, nrow = 3) + 
+    theme_minimal() + 
+    theme(panel.grid = element_blank()) +
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    geom_text(aes(y = label_y, 
+                label = num_cells), 
+            color = "white")
+
+```
+
+
 Next, examine how clones in various Seurat clusters in the pancreas differ in transcriptional profile with shared clones in other tissues. Two gene signatures are examined and compared:
 ```{r line plots of gene signature changes}
 #line plots of exhaustion signatures: choose each cluster in pancreas and track that clonotype through the other tissues
 clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
-                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas") %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & celltype == "CD8") %>% 
                               group_by(seurat_clusters, clonotype_id, tissue) %>%
                               summarize(mean = mean(Miller2019_terminally_exh1, na.rm = T)) %>%
                               cast(seurat_clusters + clonotype_id ~ tissue, value = "mean")
@@ -227,8 +396,296 @@ clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN",
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
 
+stat.test <- clonotypes_means %>% 
+              filter(seurat_clusters
+                     %in% c("CD8_mem", "CD8_eff", "CD8_texh")) %>% 
+              group_by(seurat_clusters) %>% 
+              t_test(mean ~ tissue, paired = T) %>%
+              add_xy_position()
+
+
 p_termexh_clonotypes <- clonotypes_means %>%
-                          filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
+                          filter(seurat_clusters %in% c("CD8_eff", "CD8_mem", "CD8_texh")) %>% #remove clusters with few cells/not interesting
+                          ggplot(aes(x = tissue, y = mean)) + 
+                          geom_point(alpha = 0.05) +
+                          geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                          geom_violin(adjust = 1, 
+                                      scale = "area",
+                                      trim=F, 
+                                      alpha = 0.2, 
+                                      aes(color = tissue, 
+                                          fill = tissue)) +
+                          geom_boxplot(outlier.color = NA, 
+                                       notch = T, 
+                                       width = 0.2,
+                                       alpha=0.5, 
+                                       fatten=T, 
+                                       aes(color = tissue,
+                                           fill = tissue)) +
+                          scale_color_manual(values = custom_colors("tissues")) +
+                          scale_fill_manual(values = custom_colors("tissues")) +
+                        #scale_y_continuous(limits = c(0,1)) +
+                          theme_minimal() +
+                          theme(panel.grid = element_blank(),
+                                text = element_text(size = 10),
+                                axis.title.x = element_blank(),
+                                panel.spacing.x = unit(0, "cm"),
+                                panel.border = element_rect(color = "black", fill=NA, size=1),
+                                legend.position = "none") +
+                          labs(y = expression("Terminally-exhausted score (Miller 2019)")) +
+                          facet_wrap(~ seurat_clusters, ncol = 5) + 
+                          add_pvalue(stat.test %>% filter(p.adj < 0.05))
+#progenitor-like
+clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & celltype == "CD8") %>% 
+                              group_by(seurat_clusters, clonotype_id, tissue) %>%
+                              summarize(mean = mean(Miller2019_progenitor_exh1, na.rm = T)) %>%
+                              cast(seurat_clusters + clonotype_id ~ tissue, value = "mean")
+clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
+                                group_by(clonotype_id, tissue) %>%
+                                summarize(mean = mean(Miller2019_progenitor_exh1, na.rm = T)) %>%
+                                cast(clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = "clonotype_id") %>% 
+                      melt(id.vars = c("clonotype_id","seurat_clusters"))
+clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
+
+stat.test <- clonotypes_means %>% 
+              filter(seurat_clusters
+                     %in% c("CD8_mem", "CD8_eff", "CD8_texh")) %>% 
+              group_by(seurat_clusters) %>% 
+              t_test(mean ~ tissue, paired = T) %>%
+              add_xy_position()
+
+
+p_progexh_clonotypes <- clonotypes_means %>%
+                          filter(seurat_clusters %in% c("CD8_eff", "CD8_mem", "CD8_texh")) %>% #remove clusters with few cells/not interesting
+                          ggplot(aes(x = tissue, y = mean)) + 
+                          geom_point(alpha = 0.05) +
+                          geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                          geom_violin(adjust = 1, 
+                                      scale = "area",
+                                      trim=F, 
+                                      alpha = 0.2, 
+                                      aes(color = tissue, 
+                                          fill = tissue)) +
+                          geom_boxplot(outlier.color = NA, 
+                                       notch = T, 
+                                       width = 0.2,
+                                       alpha=0.5, 
+                                       fatten=T, 
+                                       aes(color = tissue,
+                                           fill = tissue)) +
+                          scale_color_manual(values = custom_colors("tissues")) +
+                          scale_fill_manual(values = custom_colors("tissues")) +
+                        #scale_y_continuous(limits = c(0,1)) +
+                          theme_minimal() +
+                          theme(panel.grid = element_blank(),
+                                text = element_text(size = 10),
+                                axis.title.x = element_blank(),
+                                panel.spacing.x = unit(0, "cm"),
+                                panel.border = element_rect(color = "black", fill=NA, size=1),
+                                legend.position = "none") +
+                          labs(y = expression("Progenitor-exhausted score (Miller 2019)")) +
+                          facet_wrap(~ seurat_clusters, ncol = 5) + 
+                          add_pvalue(stat.test %>% filter(p.adj < 0.05))
+
+
+#effector-like
+clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & celltype == "CD8") %>% 
+                              group_by(seurat_clusters, clonotype_id, tissue) %>%
+                              summarize(mean = mean(Miller2019_effector_like1, na.rm = T)) %>%
+                              cast(seurat_clusters + clonotype_id ~ tissue, value = "mean")
+clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
+                                group_by(clonotype_id,tissue) %>%
+                                summarize(mean = mean(Miller2019_effector_like1, na.rm = T)) %>%
+                                cast(clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = "clonotype_id") %>% 
+                      melt(id.vars = c("clonotype_id","seurat_clusters"))
+clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
+
+stat.test <- clonotypes_means %>% 
+              filter(seurat_clusters
+                     %in% c("CD8_mem", "CD8_eff", "CD8_texh")) %>% 
+              group_by(seurat_clusters) %>% 
+              t_test(mean ~ tissue, paired = T) %>%
+              add_xy_position()
+
+
+p_eff_clonotypes <- clonotypes_means %>%
+                      filter(seurat_clusters %in% c("CD8_eff", "CD8_mem", "CD8_texh")) %>% #remove clusters with few cells/not interesting
+                      ggplot(aes(x = tissue, y = mean)) + 
+                      geom_point(alpha = 0.05) +
+                      geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                      geom_violin(adjust = 1, 
+                                  scale = "area",
+                                  trim=F, 
+                                  alpha = 0.2, 
+                                  aes(color = tissue, 
+                                      fill = tissue)) +
+                      geom_boxplot(outlier.color = NA, 
+                                   notch = T, 
+                                   width = 0.2,
+                                   alpha=0.5, 
+                                   fatten=T, 
+                                   aes(color = tissue,
+                                       fill = tissue)) +
+                      scale_color_manual(values = custom_colors("tissues")) +
+                      scale_fill_manual(values = custom_colors("tissues")) +
+                    #scale_y_continuous(limits = c(0,1)) +
+                      theme_minimal() +
+                      theme(panel.grid = element_blank(),
+                            text = element_text(size = 10),
+                            axis.title.x = element_blank(),
+                            panel.spacing.x = unit(0, "cm"),
+                            panel.border = element_rect(color = "black", fill=NA, size=1),
+                            legend.position = "none") +
+                      labs(y = expression("Effector-like score (Miller 2019)")) +
+                      facet_wrap(~ seurat_clusters, ncol = 5) + 
+                      add_pvalue(stat.test %>% filter(p.adj < 0.05))
+
+#memory-vs-effector
+clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & celltype == "CD8") %>% 
+                              group_by(seurat_clusters, clonotype_id, tissue) %>%
+                              summarize(mean = mean(GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN1, na.rm = T)) %>%
+                              cast(seurat_clusters + clonotype_id ~ tissue, value = "mean")
+clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
+                                group_by(clonotype_id,tissue) %>%
+                                summarize(mean = mean(GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN1, na.rm = T)) %>%
+                                cast(clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = "clonotype_id") %>% 
+                      melt(id.vars = c("clonotype_id","seurat_clusters"))
+clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
+
+stat.test <- clonotypes_means %>% 
+              filter(seurat_clusters
+                     %in% c("CD8_mem", "CD8_eff", "CD8_texh")) %>% 
+              group_by(seurat_clusters) %>% 
+              t_test(mean ~ tissue, paired = T) %>%
+              add_xy_position()
+
+
+p_mem_clonotypes <- clonotypes_means %>%
+                      filter(seurat_clusters %in% c("CD8_eff", "CD8_mem", "CD8_texh")) %>% #remove clusters with few cells/not interesting
+                      ggplot(aes(x = tissue, y = mean)) + 
+                      geom_point(alpha = 0.05) +
+                      geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                      geom_violin(adjust = 1, 
+                                  scale = "area",
+                                  trim=F, 
+                                  alpha = 0.2, 
+                                  aes(color = tissue, 
+                                      fill = tissue)) +
+                      geom_boxplot(outlier.color = NA, 
+                                   notch = T, 
+                                   width = 0.2,
+                                   alpha=0.5, 
+                                   fatten=T, 
+                                   aes(color = tissue,
+                                       fill = tissue)) +
+                      scale_color_manual(values = custom_colors("tissues")) +
+                      scale_fill_manual(values = custom_colors("tissues")) +
+                    #scale_y_continuous(limits = c(0,1)) +
+                      theme_minimal() +
+                      theme(panel.grid = element_blank(),
+                            text = element_text(size = 10),
+                            axis.title.x = element_blank(),
+                            panel.spacing.x = unit(0, "cm"),
+                            panel.border = element_rect(color = "black", fill=NA, size=1),
+                            legend.position = "none") +
+                      labs(y = expression("Memory vs. Effector (Goldrath)")) +
+                      facet_wrap(~ seurat_clusters, ncol = 5)+ 
+                      add_pvalue(stat.test %>% filter(p.adj < 0.05))
+
+# COINHIBITORY RECEPTOR EXPRESSION
+clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas" & celltype == "CD8") %>% 
+                              group_by(seurat_clusters, clonotype_id, tissue) %>%
+                              summarize(mean = mean(coinh_count, na.rm = T)) %>%
+                              cast(seurat_clusters + clonotype_id ~ tissue, value = "mean")
+clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
+                                group_by(clonotype_id,tissue) %>%
+                                summarize(mean = mean(coinh_count, na.rm = T)) %>%
+                                cast(clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = "clonotype_id") %>% 
+                      melt(id.vars = c("clonotype_id","seurat_clusters"))
+clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
+
+stat.test <- clonotypes_means %>% 
+              filter(seurat_clusters
+                     %in% c("CD8_mem", "CD8_eff", "CD8_texh")) %>% 
+              group_by(seurat_clusters) %>% 
+              t_test(mean ~ tissue, paired = T) %>%
+              add_xy_position()
+
+p_coinh_clonotypes <- clonotypes_means %>%
+                        filter(seurat_clusters %in% c("CD8_eff", "CD8_mem", "CD8_texh")) %>% #remove clusters with few cells/not interesting
+                        ggplot(aes(x = tissue, y = mean)) + 
+                        geom_point(alpha = 0.05) +
+                        geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                        geom_violin(adjust = 1, 
+                                    scale = "area",
+                                    trim=F, 
+                                    alpha = 0.2, 
+                                    aes(color = tissue, 
+                                        fill = tissue)) +
+                        geom_boxplot(outlier.color = NA, 
+                                     notch = T, 
+                                     width = 0.2,
+                                     alpha=0.5, 
+                                     fatten=T, 
+                                     aes(color = tissue,
+                                         fill = tissue)) +
+                        scale_color_manual(values = custom_colors("tissues")) +
+                        scale_fill_manual(values = custom_colors("tissues")) +
+                        #scale_y_continuous(limits = c(0,1)) +
+                        theme_minimal() +
+                        theme(panel.grid = element_blank(),
+                              text = element_text(size = 10),
+                              axis.title.x = element_blank(),
+                              panel.spacing.x = unit(0, "cm"),
+                              panel.border = element_rect(color = "black", fill=NA, size=1),
+                              legend.position = "none") +
+                        labs(y = expression("Average co-inhibitory receptors expressed")) +
+                        facet_wrap(~ seurat_clusters, ncol = 5) + 
+                        add_pvalue(stat.test %>% filter(p.adj < 0.05))
+
+grid.arrange(p_coinh_clonotypes, p_termexh_clonotypes, p_progexh_clonotypes, p_eff_clonotypes, p_mem_clonotypes, ncol = 1)
+```
+
+Show the line plots across different treatment groups.
+```{r line plots of gene signature changes}
+#line plots of exhaustion signatures: choose each cluster in pancreas and track that clonotype through the other tissues
+clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas") %>% 
+                              group_by(treatment, clonotype_id, tissue) %>%
+                              summarize(mean = mean(Miller2019_terminally_exh1, na.rm = T)) %>%
+                              cast(treatment + clonotype_id ~ tissue, value = "mean")
+clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
+                                group_by(treatment, clonotype_id, tissue) %>%
+                                summarize(mean = mean(Miller2019_terminally_exh1, na.rm = T)) %>%
+                                cast(treatment + clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = c("clonotype_id","treatment")) %>% 
+                      melt(id.vars = c("clonotype_id","treatment"))
+clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
+
+p_termexh_clonotypes <- clonotypes_means %>%
                           ggplot(aes(x = tissue, y = mean)) + 
                           geom_point(alpha = 0.05) +
                           geom_line(aes(group = clonotype_id), alpha = 0.2) + 
@@ -255,26 +712,25 @@ p_termexh_clonotypes <- clonotypes_means %>%
                                 panel.border = element_rect(color = "black", fill=NA, size=1),
                                 legend.position = "none") +
                           labs(y = expression("Terminally-exhausted score (Miller 2019)")) +
-                        facet_wrap(~ seurat_clusters, ncol = 5)
+                        facet_wrap(~ treatment, ncol = 5)
 
 clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
                               filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas") %>% 
-                              group_by(seurat_clusters, clonotype_id, tissue) %>%
+                              group_by(treatment, clonotype_id, tissue) %>%
                               summarize(mean = mean(Miller2019_effector_like1, na.rm = T)) %>%
-                              cast(seurat_clusters + clonotype_id ~ tissue, value = "mean")
+                              cast(treatment + clonotype_id ~ tissue, value = "mean")
 clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
                                 filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
-                                group_by(clonotype_id,tissue) %>%
+                                group_by(treatment, clonotype_id, tissue) %>%
                                 summarize(mean = mean(Miller2019_effector_like1, na.rm = T)) %>%
-                                cast(clonotype_id ~ tissue, value = "mean")
-clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = "clonotype_id") %>% 
-                      melt(id.vars = c("clonotype_id","seurat_clusters"))
+                                cast(treatment + clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = c("clonotype_id","treatment")) %>% 
+                      melt(id.vars = c("clonotype_id","treatment"))
 clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
 
 p_eff_clonotypes <- clonotypes_means %>%
-                      filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
                       ggplot(aes(x = tissue, y = mean)) + 
                       geom_point(alpha = 0.05) +
                       geom_line(aes(group = clonotype_id), alpha = 0.2) + 
@@ -301,27 +757,26 @@ p_eff_clonotypes <- clonotypes_means %>%
                             panel.border = element_rect(color = "black", fill=NA, size=1),
                             legend.position = "none") +
                       labs(y = expression("Effector-like score (Miller 2019)")) +
-                    facet_wrap(~ seurat_clusters, ncol = 5)
+                    facet_wrap(~ treatment, ncol = 5)
 
 #memory-vs-effector
 clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
                               filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas") %>% 
-                              group_by(seurat_clusters, clonotype_id, tissue) %>%
+                              group_by(treatment, clonotype_id, tissue) %>%
                               summarize(mean = mean(GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN1, na.rm = T)) %>%
-                              cast(seurat_clusters + clonotype_id ~ tissue, value = "mean")
+                              cast(treatment + clonotype_id ~ tissue, value = "mean")
 clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
                                 filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
-                                group_by(clonotype_id,tissue) %>%
+                                group_by(treatment, clonotype_id, tissue) %>%
                                 summarize(mean = mean(GOLDRATH_EFF_VS_MEMORY_CD8_TCELL_DN1, na.rm = T)) %>%
-                                cast(clonotype_id ~ tissue, value = "mean")
-clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = "clonotype_id") %>% 
-                      melt(id.vars = c("clonotype_id","seurat_clusters"))
+                                cast(treatment + clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = c("clonotype_id","treatment")) %>% 
+                      melt(id.vars = c("clonotype_id","treatment"))
 clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
 colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
 
 p_mem_clonotypes <- clonotypes_means %>%
-                      filter(seurat_clusters %in% c("CD8_eff_Cxcr6", "CD8_mem", "CD8_texh", "CD8_effmem", "Acinar_contaminated")) %>% #remove clusters with few cells/not interesting
                       ggplot(aes(x = tissue, y = mean)) + 
                       geom_point(alpha = 0.05) +
                       geom_line(aes(group = clonotype_id), alpha = 0.2) + 
@@ -348,10 +803,57 @@ p_mem_clonotypes <- clonotypes_means %>%
                             panel.border = element_rect(color = "black", fill=NA, size=1),
                             legend.position = "none") +
                       labs(y = expression("Memory vs. Effector (Goldrath)")) +
-                    facet_wrap(~ seurat_clusters, ncol = 5)
+                    facet_wrap(~ treatment, ncol = 5)
 
 grid.arrange(p_termexh_clonotypes, p_eff_clonotypes, p_mem_clonotypes, ncol = 1)
 #show UMAPs of certain clonotypes as examples
+
+# COINHIBITORY RECEPTOR EXPRESSION
+clonotypes_pancreas_means <- seurat_integrated@meta.data %>% 
+                              filter(tissue == "pancreas" & clonotype_tissue_groups == "pLN&blood&pancreas") %>% 
+                              group_by(treatment, clonotype_id, tissue) %>%
+                              summarize(mean = mean(coinh_count, na.rm = T)) %>%
+                              cast(treatment + clonotype_id ~ tissue, value = "mean")
+clonotypes_periphery_means <- seurat_integrated@meta.data %>% 
+                                filter(tissue != "pancreas" & clonotype_id %in% clonotypes_pancreas_means$clonotype_id) %>%
+                                group_by(treatment, clonotype_id, tissue) %>%
+                                summarize(mean = mean(coinh_count, na.rm = T)) %>%
+                                cast(treatment + clonotype_id ~ tissue, value = "mean")
+clonotypes_means <- merge(clonotypes_pancreas_means, clonotypes_periphery_means , by = c("clonotype_id","treatment")) %>% 
+                      melt(id.vars = c("clonotype_id","treatment"))
+clonotypes_means$variable <- factor(clonotypes_means$variable, levels = c("pLN","blood","pancreas"))
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "variable")] <- "tissue"
+colnames(clonotypes_means)[which(colnames(clonotypes_means) == "value")] <- "mean"
+
+p_coinh_clonotypes <- clonotypes_means %>%
+                      ggplot(aes(x = tissue, y = mean)) + 
+                      geom_point(alpha = 0.05) +
+                      geom_line(aes(group = clonotype_id), alpha = 0.2) + 
+                      geom_violin(adjust = 1, 
+                                  scale = "area",
+                                  trim=F, 
+                                  alpha = 0.2, 
+                                  aes(color = tissue, 
+                                      fill = tissue)) +
+                      geom_boxplot(outlier.color = NA, 
+                                   notch = T, 
+                                   width = 0.2,
+                                   alpha=0.5, 
+                                   fatten=T, 
+                                   aes(fill = tissue)) +
+                      scale_color_manual(values = custom_colors("tissues")) +
+                      scale_fill_manual(values = custom_colors("tissues")) +
+                    #scale_y_continuous(limits = c(0,1)) +
+                      theme_minimal() +
+                      theme(panel.grid = element_blank(),
+                            text = element_text(size = 10),
+                            axis.title.x = element_blank(),
+                            panel.spacing.x = unit(0, "cm"),
+                            panel.border = element_rect(color = "black", fill=NA, size=1),
+                            legend.position = "none") +
+                      labs(y = expression("Average co-inhibitory receptors expressed")) +
+                    facet_wrap(~ treatment, ncol = 5)
+p_coinh_clonotypes
 ```
 
 Plot some example UMAPs of shared clusters.
@@ -533,6 +1035,85 @@ ptet_mem_tcrtypes <- tcrtypes_means %>%
 grid.arrange(ptet_termexh_tcrtypes, ptet_eff_tcrtypes, ptet_mem_tcrtypes, ncol = 1)
 ```
 
-Fisher's exact test with plot to look at sharing between clusters. Number of unique clonotypes in box and p values as color.
+Upset plot to show the sharing of clones between Treg and Tcon:
+```{r clonotypes shared between Treg and Tcon}
+p_tcon_treg_shared_clonotypes <- seurat_integrated@meta.data %>% 
+                                  filter(!is.na(clonotype_celltype_groups)) %>%
+                                  ggplot(aes(x = allcells_UMAP_1, 
+                                           y = allcells_UMAP_2, 
+                                           color = seurat_clusters)) + 
+                                  geom_point(data = seurat_integrated@meta.data %>%
+                                               dplyr::select(-clonotype_celltype_groups), 
+                                               shape = 16,
+                                               color = "grey90") +
+                                  geom_point(shape = 16) +
+                                  theme_minimal() +
+                                  theme(axis.title = element_blank(),
+                                        axis.text = element_blank(),
+                                        strip.text = element_blank(),
+                                        text = element_text(size = 15),
+                                        panel.grid = element_blank(),
+                                        legend.position = "none") +
+                                  labs(x = 'UMAP 1', 
+                                       y = 'UMAP 2', 
+                                       color = "Seurat clusters",
+                                       size = "Size of clonotype\n(pancreas only)") +
+                                  facet_wrap(~ clonotype_celltype_groups) +
+                                  scale_color_manual(values = custom_colors("clusters"),
+                                                     limits = force) #drops unused clusters in legend
+p_tcon_treg_shared_clonotypes
 
-Upset plots, venn diagrams, or something else to look at the sharing of clones across different Seurat clusters.
+df <- seurat_integrated@meta.data %>% 
+        filter(clonotype_celltype_groups == "Tcon&Treg") %>% 
+          group_by(treatment,mouse_id,clonotype_id,clonotype_count,seurat_clusters) %>% 
+          unique() %>% 
+          select(treatment,mouse_id,clonotype_id,clonotype_count,seurat_clusters) %>% 
+          summarize() %>%
+            mutate(index = T) %>% 
+            pivot_wider(c(treatment,mouse_id,clonotype_id,clonotype_count), names_from = seurat_clusters, values_from = index) %>% 
+            mutate_all(replace_na, F)
+cluster_labels <- rev(levels(pan4$seurat_clusters)) #determines the order of the clusters in the table
+df$num_unique_clusters <- rowSums(df[,5:15])
+df$grouping <- apply(df, 1, function(x) paste(colnames(df)[5:15][x[5:15] == T], collapse = "&")) #add a column that concatenates all the seurat clusters that a clonotype includes
+upset(df, cluster_labels, set_sizes = F, sort_sets = F, width_ratio = 0.1, min_size = 3,  keep_empty_groups=TRUE) +
+    ggtitle("Treg & Tcon shared clusters") + 
+  theme_minimal() +
+  theme(text = element_text(size = 15))
+
+#plot example UMAPs of individual clonotypes showing distribution of Tcon and Treg
+seurat_integrated@meta.data %>% 
+    filter(clonotype_celltype_groups == "Tcon&Treg") %>% 
+    group_by(clonotype_id,celltype) %>% tally() %>%
+    cast(clonotype_id ~ celltype, value = "n") %>% 
+    mutate(total = Tcon + Treg) %>%
+    arrange(desc(Treg), desc(total)) %>%
+    head(20)
+
+p_tcon_treg_shared_example_clonotypes <- seurat_integrated@meta.data %>% 
+                                  filter(clonotype_id %in% paste0("clonotype",c(59,68,65,86,87))) %>% #these clonotypes are the largest with more than 3 Tregs
+                                  ggplot(aes(x = allcells_UMAP_1, 
+                                           y = allcells_UMAP_2, 
+                                           color = seurat_clusters)) + 
+                                  geom_point(data = seurat_integrated@meta.data %>%
+                                               dplyr::select(-clonotype_celltype_groups), 
+                                               shape = 16,
+                                               color = "grey90") +
+                                  geom_point(shape = 16) +
+                                  theme_minimal() +
+                                  theme(axis.title = element_blank(),
+                                        axis.text = element_blank(),
+                                        strip.text = element_blank(),
+                                        text = element_text(size = 15),
+                                        panel.grid = element_blank(),
+                                        legend.position = "none") +
+                                  labs(x = 'UMAP 1', 
+                                       y = 'UMAP 2', 
+                                       color = "Seurat clusters",
+                                       size = "Size of clonotype\n(pancreas only)") +
+                                  facet_wrap(~ celltype) +
+                                  scale_color_manual(values = custom_colors("clusters"),
+                                                     limits = force) #drops unused clusters in legend
+p_tcon_treg_shared_example_clonotypes
+```
+
+Fisher's exact test with plot to look at sharing between clusters. Number of unique clonotypes in box and p values as color.
