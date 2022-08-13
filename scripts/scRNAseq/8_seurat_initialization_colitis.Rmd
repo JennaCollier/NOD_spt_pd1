@@ -32,8 +32,356 @@ require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
 source("scripts/utils.R") #custom color palettes and other functions
 set.seed(1) #set a seed for reproducibility
 ```
+
+Recode the pathology levels. Then plot the expression of co-inhibitory receptors:
+```{r coinhibitory receptor expression}
+cd8_merge <- merge(luoma_cd8, list(boland_cd8, corri))
+new_metadata <- data.frame(coinh_count = rowSums(as.data.frame(t(as.data.frame(cd8_merge@assays$RNA@data[c("PDCD1","HAVCR2","CTLA4","LAG3","TIGIT","CD160"),]))) > 0))
+cd8_merge <- AddMetaData(cd8_merge, new_metadata)
+cd8_merge$pathology <- recode_factor(cd8_merge$pathology, 
+                                        "Healthy Control" = "healthy",
+                                        "Ulcerative Colitis" = "colitis",
+                                        "ICI No Colitis" = "ICI",
+                                        "ICI Colitis" = "ICI+colitis")
+
+tcon_merge <- merge(luoma_tcon, boland_tcon)
+new_metadata <- data.frame(coinh_count = rowSums(as.data.frame(t(as.data.frame(tcon_merge@assays$RNA@data[c("PDCD1","HAVCR2","CTLA4","LAG3","TIGIT","CD160"),]))) > 0))
+tcon_merge <- AddMetaData(tcon_merge, new_metadata)
+tcon_merge$pathology <- recode_factor(tcon_merge$pathology, 
+                                        "Healthy Control" = "healthy",
+                                        "Ulcerative Colitis" = "colitis",
+                                        "ICI No Colitis" = "ICI",
+                                        "ICI Colitis" = "ICI+colitis")
+
+p_cd8_coinh <- cd8_merge@meta.data %>% 
+                  group_by(pathology, paper, sample) %>% 
+                  summarize(avg = mean(coinh_count)) %>%
+                  ggplot() + 
+                  geom_violin(aes(x = pathology, 
+                             fill = pathology, 
+                             y = avg, 
+                             color = pathology),
+                             alpha = 0.5,
+                              adjust = 1,
+                              draw_quantiles = c(0.25,0.5,0.75),
+                              scale = "width") + 
+                  geom_point(aes(x = pathology, 
+                             fill = pathology, 
+                             y = avg, 
+                             color = pathology),
+                             size = 4,
+                             position = position_jitter()) + 
+                  theme_minimal() + 
+                  theme(panel.spacing = unit(0,"lines"),
+                        axis.title.x = element_blank(),
+                        panel.grid = element_blank(),
+                        panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                  facet_wrap(~paper, scales = "free_x") + 
+                  scale_fill_manual(values = custom_colors("colitis")) + 
+                  scale_color_manual(values = custom_colors("colitis")) +
+                  labs(y = "Average number of co-inhibitory receptors") +
+                  add_pvalue(data.frame(cd8_merge@meta.data %>% 
+                                            group_by(pathology, paper, sample) %>% 
+                                            summarize(avg = mean(coinh_count)) %>% 
+                                            ungroup() %>%
+                                          group_by(paper) %>%
+                                            t_test(avg ~ pathology) %>% 
+                                            add_xy_position()),
+                             tip.length = 0)
+
+p_pan8_coinh <- pan8@meta.data %>% 
+                  group_by(treatment, mouse_id) %>% 
+                  summarize(avg = mean(coinh_count)) %>%
+                  ggplot() + 
+                  geom_violin(aes(x = treatment, 
+                                  fill = treatment, 
+                                  y = avg, 
+                                  color = treatment),
+                              alpha = 0.5,
+                              adjust = 1,
+                              draw_quantiles = c(0.25,0.5,0.75),
+                              scale = "width") + 
+                  geom_point(aes(x = treatment, 
+                                 y = avg, 
+                                 color = treatment),
+                             size = 4,
+                             position = position_jitter()) + 
+                  theme_minimal() + 
+                  theme(panel.spacing = unit(0,"lines"),
+                        legend.position = "none",
+                        axis.title.x = element_blank(),
+                        panel.grid = element_blank(),
+                        panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                  scale_fill_manual(values = custom_colors("treatments")) + 
+                  scale_color_manual(values = custom_colors("treatments")) +
+                  labs(y = "Average number of co-inhibitory receptors", title = "CD8+ T cells") +
+                  add_pvalue(pan8@meta.data %>% 
+                               group_by(treatment, mouse_id) %>% 
+                               summarize(avg = mean(coinh_count)) %>% 
+                               ungroup() %>% 
+                               t_test(avg ~ treatment) %>% 
+                               add_xy_position(),
+                             tip.length = 0)
+
+p_tcon_coinh <- tcon_merge@meta.data %>% 
+                  group_by(pathology, paper, sample) %>% 
+                  summarize(avg = mean(coinh_count)) %>%
+                  ggplot() + 
+                  geom_violin(aes(x = pathology, 
+                             fill = pathology, 
+                             y = avg, 
+                             color = pathology),
+                             alpha = 0.5,
+                              adjust = 1,
+                              draw_quantiles = c(0.25,0.5,0.75),
+                              scale = "width") + 
+                  geom_point(aes(x = pathology, 
+                             fill = pathology, 
+                             y = avg, 
+                             color = pathology),
+                             size = 4,
+                             position = position_jitter()) + 
+                  theme_minimal() + 
+                  theme(panel.spacing = unit(0,"lines"),
+                        axis.title.x = element_blank(),
+                        panel.grid = element_blank(),
+                        panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                  facet_wrap(~paper, scales = "free_x") + 
+                  scale_fill_manual(values = custom_colors("colitis")) + 
+                  scale_color_manual(values = custom_colors("colitis")) +
+                  labs(y = "Average number of co-inhibitory receptors") +
+                  add_pvalue(data.frame(tcon_merge@meta.data %>% 
+                                            group_by(pathology, paper, sample) %>% 
+                                            summarize(avg = mean(coinh_count)) %>% 
+                                            ungroup() %>%
+                                          group_by(paper) %>%
+                                            t_test(avg ~ pathology) %>% 
+                                            add_xy_position()),
+                             tip.length = 0)
+
+p_pan4_coinh <- pan4@meta.data %>% 
+                  filter(celltype == "Tcon") %>%
+                  group_by(treatment, mouse_id) %>% 
+                  summarize(avg = mean(coinh_count)) %>%
+                  ggplot() + 
+                  geom_violin(aes(x = treatment, 
+                                  fill = treatment, 
+                                  y = avg, 
+                                  color = treatment),
+                              alpha = 0.5,
+                              adjust = 1,
+                              draw_quantiles = c(0.25,0.5,0.75),
+                              scale = "width") + 
+                  geom_point(aes(x = treatment, 
+                                 y = avg, 
+                                 color = treatment),
+                             size = 4,
+                             position = position_jitter()) + 
+                  theme_minimal() + 
+                  theme(panel.spacing = unit(0,"lines"),
+                        legend.position = "none",
+                        axis.title.x = element_blank(),
+                        panel.grid = element_blank(),
+                        panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                  scale_fill_manual(values = custom_colors("treatments")) + 
+                  scale_color_manual(values = custom_colors("treatments")) +
+                  labs(y = "Average number of co-inhibitory receptors", title = "Tcon") +
+                  add_pvalue(pan4@meta.data %>% 
+                               filter(celltype == "Tcon") %>%
+                               group_by(treatment, mouse_id) %>% 
+                               summarize(avg = mean(coinh_count)) %>% 
+                               ungroup() %>% 
+                               t_test(avg ~ treatment) %>% 
+                               add_xy_position(),
+                             tip.length = 0)
+
+grid.arrange(p_cd8_coinh, p_pan8_coinh, p_tcon_coinh, p_pan4_coinh, nrow = 2, widths = c(2,1))
+
+```
+
+```{r add the exhaustion gene signature}
+term_exh <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx", sheet = "Terminally Exh.")$gene
+term_exh <- convertMouseGeneList(term_exh)
+cd8_merge <- AddModuleScore(cd8_merge, features = list(term_exh), name = "Miller2019_terminally_exh", assay = "RNA")
+
+p_miller_texh <- cd8_merge@meta.data %>% 
+                  group_by(pathology, paper, sample) %>% 
+                  summarize(avg = mean( Miller2019_terminally_exh1)) %>%
+                  ggplot() + 
+                  geom_violin(aes(x = pathology, 
+                                  fill = pathology, 
+                                  y = avg, 
+                                  color = pathology),
+                              alpha = 0.5,
+                              adjust = 1,
+                              draw_quantiles = c(0.25,0.5,0.75),
+                              scale = "width") + 
+                  geom_point(aes(x = pathology, 
+                                 fill = pathology, 
+                                 y = avg, 
+                                 color = pathology),
+                             size = 4,
+                             position = position_jitter()) + 
+                  theme_minimal() + 
+                  theme(panel.spacing = unit(0,"lines"),
+                        axis.title.x = element_blank(),
+                        panel.grid = element_blank(),
+                        panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                  facet_wrap(~paper, scales = "free_x") + 
+                  scale_fill_manual(values = custom_colors("colitis")) + 
+                  scale_color_manual(values = custom_colors("colitis")) +
+                  labs(y = "Terminally exhausted module score (Miller 2019)") +
+                  add_pvalue(data.frame(cd8_merge@meta.data %>% 
+                                            group_by(pathology, paper, sample) %>% 
+                                            summarize(avg = mean( Miller2019_terminally_exh1)) %>% 
+                                            ungroup() %>%
+                                            group_by(paper) %>%
+                                            t_test(avg ~ pathology) %>% 
+                                            add_xy_position()),
+                             tip.length = 0)
+
+p_nod_texh <- cd8_merge@meta.data %>% 
+                group_by(pathology, paper, sample) %>% 
+                summarize(avg = mean(texh_signature1)) %>%
+                ggplot() + 
+                geom_violin(aes(x = pathology, 
+                                fill = pathology, 
+                                y = avg, 
+                                color = pathology),
+                            alpha = 0.5,
+                            adjust = 1,
+                            draw_quantiles = c(0.25,0.5,0.75),
+                            scale = "width") + 
+                geom_point(aes(x = pathology, 
+                               fill = pathology, 
+                               y = avg, 
+                               color = pathology),
+                           size = 4,
+                           position = position_jitter()) + 
+                theme_minimal() + 
+                theme(panel.spacing = unit(0,"lines"),
+                      axis.title.x = element_blank(),
+                      panel.grid = element_blank(),
+                      panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                facet_wrap(~paper, scales = "free_x") + 
+                scale_fill_manual(values = custom_colors("colitis")) + 
+                scale_color_manual(values = custom_colors("colitis")) +
+                labs(y = "Terminally exhausted/effector-like module score") +
+                add_pvalue(data.frame(cd8_merge@meta.data %>% 
+                                          group_by(pathology, paper, sample) %>% 
+                                          summarize(avg = mean(texh_signature1)) %>% 
+                                          ungroup() %>%
+                                          group_by(paper) %>%
+                                          t_test(avg ~ pathology) %>% 
+                                          add_xy_position()),
+                           tip.length = 0)
+
+grid.arrange(p_miller_texh, p_nod_texh, nrow = 2)
+```
+
+```{r identify overlapping genes in exhaustion signatures}
+length(setdiff(term_exh, PD1_signature))
+length(setdiff(PD1_signature, term_exh))
+length(intersect(PD1_signature, term_exh))
+
+setdiff(term_exh, PD1_signature)
+setdiff(PD1_signature, term_exh)
+intersect(PD1_signature, term_exh)
+```
+
+```{r violin plot of Cd38 expression}
+new_metadata <- data.frame(t(as.matrix(seurat_integrated@assays$RNA["Cd38",])))
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+seurat_integrated@meta.data %>%
+    group_by(treatment, mouse_id, tissue) %>%
+    summarize(Cd38 = mean(Cd38)) %>%
+    ggplot(aes(x = tissue, y = Cd38, fill = treatment, color = treatment)) +
+    geom_violin(alpha = 0.5,
+                adjust = 1,
+                draw_quantiles = c(0.25,0.5,0.75),
+                scale = "width") + 
+    geom_point(size = 4,
+               position = position_dodge(0.9)) + 
+    theme_minimal() + 
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("treatments")) + 
+    scale_color_manual(values = custom_colors("treatments")) +
+    labs(y = "Cd38 expression") +
+    facet_wrap(~ tissue, scales = "free_x")
+
+seurat_integrated@meta.data %>%
+    group_by(treatment, mouse_id, tissue) %>%
+    summarize(Cd38 = mean(Cd38)) %>% group_by(tissue) %>%
+ t_test(Cd38 ~ treatment)
+  
+```
+
+```{r UMAPs of Cd38 expression in patient colitis}
+new_metadata <- as.data.frame(cd8_merge@reductions$umap@cell.embeddings)
+cd8_merge <- AddMetaData(cd8_merge, new_metadata)
+
+new_metadata <- data.frame(t(as.matrix(cd8_merge@assays$RNA["CD38",])))
+cd8_merge <- AddMetaData(cd8_merge, new_metadata)
+
+p_umaps <- cd8_merge@meta.data %>% 
+    ggplot(aes(x = UMAP_1, 
+               y = UMAP_2, 
+               color = CD38)) + 
+    geom_point(shape = 16) +
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = "none",
+          legend.key.height = unit(0.25,"cm")) +
+    labs(color= NULL,
+         title = NULL) +
+    scale_color_gradient(low = "azure2", high = "blue4") +
+  facet_wrap(paper ~ pathology) +
+    guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
+
+cd8_merge@meta.data %>%
+    group_by(treatment, orig.ident, paper) %>%
+    summarize(Cd38 = mean(CD38)) %>%
+    ggplot() +
+    geom_violin(aes(x = treatment, y = Cd38, fill = treatment, color = treatment),
+                alpha = 0.5,
+                adjust = 1,
+                draw_quantiles = c(0.25,0.5,0.75),
+                scale = "width") + 
+    geom_point(aes(x = treatment, y = Cd38, fill = treatment, color = treatment),
+               size = 4,
+               position = position_dodge(0.9)) + 
+    theme_minimal() + 
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("colitis")) + 
+    scale_color_manual(values = custom_colors("colitis")) +
+    labs(y = "Cd38 expression") +
+    facet_wrap(~ paper, scales = "free_x") +
+    add_pvalue(cd8_merge@meta.data %>%
+                   group_by(treatment, orig.ident, paper) %>%
+                   summarize(Cd38 = mean(CD38)) %>% 
+                   group_by(paper) %>% 
+                   t_test(Cd38 ~ treatment) %>%
+                   add_xy_position(),
+               tip.length = 0)
+
+```
+
 Remove acinar cells and get gene signatures. UC shows a shift from memory to effectorness wheras PD1 shows shift towards Texhaustion. Look at 2D (texh vs eff and teff vs mem):
-```{r identify effector-memory vs. texh signature in mice}
+```{r identify Cd8 gene signatures}
 new_metadata <- pan8@meta.data %>% 
                   mutate(patient_signature = case_when(seurat_clusters %in% c("CD8_pexh","CD8_eff","CD8_mem") ~ "Spt_clusters",
                                                        seurat_clusters %in% c("CD8_texh","Proliferating") ~ "PD1_clusters",
@@ -41,47 +389,102 @@ new_metadata <- pan8@meta.data %>%
                   dplyr::select(patient_signature)
 
 pan8 <- AddMetaData(pan8, new_metadata)
-markers <- FindMarkers(pan8, 
-                       ident.1 = "PD1_clusters", 
-                       ident.2 = "Spt_clusters", 
-                       group.by = "patient_signature") %>% 
+
+PD1_markers <- FindMarkers(pan8, 
+                       ident.1 = "CD8_texh", 
+                       group.by = "seurat_clusters") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+slec_markers <- FindMarkers(pan8, 
+                       ident.1 = "CD8_slec", 
+                       group.by = "seurat_clusters") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+Spt_markers <- FindMarkers(pan8, 
+                       ident.1 = "CD8_eff", 
+                       group.by = "seurat_clusters") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+mem_markers <- FindMarkers(pan8, 
+                       ident.1 = "CD8_mem", 
+                       group.by = "seurat_clusters") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+cm_markers <- FindMarkers(pan8, 
+                       ident.1 = "CD8_cm", 
+                       group.by = "seurat_clusters") %>% 
             filter(p_val_adj<0.05) %>%
             arrange(desc(avg_log2FC))
 
 #aim for around 150 genes
-markers %>% filter(avg_log2FC>0) %>% count()
+PD1_markers %>% filter(avg_log2FC>0) %>% count()
 
 #genes are mouse, so convert them to human
-PD1_signature <- convertMouseGeneList(markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
-```
-With the human genes associated with PD1 compared to Spt, project these gene signatures onto the patient colitis data.
-```{r project signatures onto colitis data}
-luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(PD1_signature), name = "PD1_signature")
-corri <- AddModuleScore(corri, features = list(PD1_signature), name = "PD1_signature")
-boland_cd8 <- AddModuleScore(boland_cd8, features = list(PD1_signature), name = "PD1_signature")
+PD1_signature <- convertMouseGeneList(PD1_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+Spt_signature <- convertMouseGeneList(Spt_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+mem_signature <- convertMouseGeneList(mem_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+slec_signature <- convertMouseGeneList(slec_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+cm_signature <- convertMouseGeneList(cm_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
 
+luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(PD1_signature), name = "CD8_PD1_signature")
+luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(mem_signature), name = "CD8_mem_signature")
+luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(cm_signature), name = "CD8_cm_signature")
+boland_cd8 <- AddModuleScore(boland_cd8, features = list(PD1_signature), name = "CD8_PD1_signature")
+boland_cd8 <- AddModuleScore(boland_cd8, features = list(mem_signature), name = "CD8_mem_signature")
+boland_cd8 <- AddModuleScore(boland_cd8, features = list(cm_signature), name = "CD8_cm_signature")
+luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(Spt_signature), name = "CD8_Spt_signature")
+boland_cd8 <- AddModuleScore(boland_cd8, features = list(Spt_signature), name = "CD8_Spt_signature")
+corri <- AddModuleScore(corri, features = list(cm_signature), name = "CD8_cm_signature")
+corri <- AddModuleScore(corri, features = list(PD1_signature), name = "CD8_PD1_signature")
+corri <- AddModuleScore(corri, features = list(Spt_signature), name = "CD8_Spt_signature")
+corri <- AddModuleScore(corri, features = list(mem_signature), name = "CD8_mem_signature")
+```
+
+```{r identify CD4 gene signatures}
+PD1_markers <- FindMarkers(pan4, 
+                       ident.1 = "Tcon_prog", 
+                       group.by = "seurat_clusters") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+Spt_markers <- FindMarkers(pan4, 
+                       ident.1 = "Tcon_effmem", 
+                       group.by = "seurat_clusters") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+
+#aim for around 150 genes
+PD1_markers %>% filter(avg_log2FC>0) %>% count()
+
+#genes are mouse, so convert them to human
+PD1_signature <- convertMouseGeneList(PD1_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+Spt_signature <- convertMouseGeneList(Spt_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+
+luoma_tcon <- AddModuleScore(luoma_tcon, features = list(PD1_signature), name = "CD4_PD1_signature")
+boland_tcon <- AddModuleScore(boland_tcon, features = list(PD1_signature), name = "CD4_PD1_signature")
+luoma_tcon <- AddModuleScore(luoma_tcon, features = list(Spt_signature), name = "CD4_Spt_signature")
+boland_tcon <- AddModuleScore(boland_tcon, features = list(Spt_signature), name = "CD4_Spt_signature")
+```
+
+With the human genes associated with PD1 compared to Spt, project these gene signatures onto the patient colitis data.
+```{r cd8 signature violins}
 #temporary fix to adjust naming scheme
 luoma_cd8$treatment <- factor(recode_factor(luoma_cd8$treatment, "CT" = "healthy", "NC" = "ICI", "C" = "ICI+colitis"), 
                               levels = c("healthy","ICI","ICI+colitis"))
 corri$treatment <- factor(recode_factor(corri$treatment, "HC" = "healthy", "UC" = "colitis"), levels = c("healthy","colitis"))
 boland_cd8$treatment <- factor(recode_factor(boland_cd8$treatment, "HC" = "healthy", "UC" = "colitis"), levels = c("healthy","colitis"))
 
-cd8s <- rbind(luoma_cd8@meta.data %>% dplyr::select(paper,treatment,sample,PD1_signature1),
-              corri@meta.data %>% dplyr::select(paper,treatment,sample,PD1_signature1),
-              boland_cd8@meta.data %>% dplyr::select(paper,treatment,sample,PD1_signature1))
-
 stat.test <- data.frame(luoma_cd8@meta.data %>%
                             group_by(treatment,sample) %>%
-                            summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+                            summarize(CD8_PD1_signature1 = mean(CD8_PD1_signature1)) %>%
                             ungroup() %>%
-                            t_test(PD1_signature1 ~ treatment) %>% 
+                            t_test(CD8_PD1_signature1 ~ treatment) %>% 
                             add_xy_position())
 
 p_luoma <- luoma_cd8@meta.data %>%
     group_by(treatment, sample) %>%
-    summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+    summarize(CD8_PD1_signature1 = mean(CD8_PD1_signature1)) %>%
     ggplot(aes(x = treatment,
-               y = PD1_signature1)) +
+               y = CD8_PD1_signature1)) +
     geom_violin(aes(
                color = treatment,
                fill = treatment),
@@ -117,17 +520,17 @@ p_luoma <- luoma_cd8@meta.data %>%
 ## CORRIDONI
 stat.test <- data.frame(corri@meta.data %>%
                             group_by(treatment,sample) %>%
-                            summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+                            summarize(CD8_PD1_signature1 = mean(CD8_PD1_signature1)) %>%
                             ungroup() %>%
-                            t_test(PD1_signature1 ~ treatment) %>% 
+                            t_test(CD8_PD1_signature1 ~ treatment) %>% 
                             add_xy_position() %>%
                             add_significance())
 
 p_corri <- corri@meta.data %>%
     group_by(treatment, sample) %>%
-    summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+    summarize(CD8_PD1_signature1 = mean(CD8_PD1_signature1)) %>%
     ggplot(aes(x = treatment,
-               y = PD1_signature1)) +
+               y = CD8_PD1_signature1)) +
     geom_violin(aes(
                color = treatment,
                fill = treatment),
@@ -163,17 +566,17 @@ p_corri <- corri@meta.data %>%
 ## BOLAND
 stat.test <- data.frame(boland_cd8@meta.data %>%
                             group_by(treatment,sample) %>%
-                            summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+                            summarize(CD8_PD1_signature1 = mean(CD8_PD1_signature1)) %>%
                             ungroup() %>%
-                            t_test(PD1_signature1 ~ treatment) %>% 
+                            t_test(CD8_PD1_signature1 ~ treatment) %>% 
                             add_xy_position() %>%
                             add_significance())
 
 p_boland <- boland_cd8@meta.data %>%
     group_by(treatment, sample) %>%
-    summarize(PD1_signature1 = mean(PD1_signature1)) %>%
+    summarize(CD8_PD1_signature1 = mean(CD8_PD1_signature1)) %>%
     ggplot(aes(x = treatment,
-               y = PD1_signature1)) +
+               y = CD8_PD1_signature1)) +
     geom_violin(aes(
                color = treatment,
                fill = treatment),
@@ -209,16 +612,354 @@ p_boland <- boland_cd8@meta.data %>%
 grid.arrange(p_corri, p_boland, p_luoma, nrow = 1, widths = c(1,1,2))
 ```
 
+```{r cd8 signature violins}
+#temporary fix to adjust naming scheme
+luoma_cd8$treatment <- factor(recode_factor(luoma_cd8$treatment, "CT" = "healthy", "NC" = "ICI", "C" = "ICI+colitis"), 
+                              levels = c("healthy","ICI","ICI+colitis"))
+corri$treatment <- factor(recode_factor(corri$treatment, "HC" = "healthy", "UC" = "colitis"), levels = c("healthy","colitis"))
+boland_cd8$treatment <- factor(recode_factor(boland_cd8$treatment, "HC" = "healthy", "UC" = "colitis"), levels = c("healthy","colitis"))
+
+stat.test <- data.frame(luoma_cd8@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(CD8_Spt_signature1 = mean(CD8_Spt_signature1)) %>%
+                            ungroup() %>%
+                            t_test(CD8_Spt_signature1 ~ treatment) %>% 
+                            add_xy_position())
+
+p_luoma <- luoma_cd8@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(CD8_Spt_signature1 = mean(CD8_Spt_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = CD8_Spt_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "CD8 T cells: Luoma", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.adj.signif",
+             tip.length = 0,
+             label.size = 8)
+
+## CORRIDONI
+stat.test <- data.frame(corri@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(CD8_Spt_signature1 = mean(CD8_Spt_signature1)) %>%
+                            ungroup() %>%
+                            t_test(CD8_Spt_signature1 ~ treatment) %>% 
+                            add_xy_position() %>%
+                            add_significance())
+
+p_corri <- corri@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(CD8_Spt_signature1 = mean(CD8_Spt_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = CD8_Spt_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "none") +
+    scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "CD8 T cells: Corridoni", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.signif", #t test is not adjusted because there are only two groups
+             tip.length = 0,
+             label.size = 8)
+
+## BOLAND
+stat.test <- data.frame(boland_cd8@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(CD8_Spt_signature1 = mean(CD8_Spt_signature1)) %>%
+                            ungroup() %>%
+                            t_test(CD8_Spt_signature1 ~ treatment) %>% 
+                            add_xy_position() %>%
+                            add_significance())
+
+p_boland <- boland_cd8@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(CD8_Spt_signature1 = mean(CD8_Spt_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = CD8_Spt_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "none") +
+    scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "CD8 T cells: Boland", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.signif",
+             tip.length = 0,
+             label.size = 8)
+
+grid.arrange(p_corri, p_boland, p_luoma, nrow = 1, widths = c(1,1,2))
+```
+
+
+```{r cd4 PD1 signature violins}
+stat.test <- data.frame(luoma_tcon@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
+                            ungroup() %>%
+                            t_test(CD4_PD1_signature1 ~ treatment) %>% 
+                            add_xy_position())
+
+p_luoma <- luoma_tcon@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = CD4_PD1_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    #scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "tcon T cells: Luoma", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.adj.signif",
+             tip.length = 0,
+             label.size = 8)
+
+## BOLAND
+stat.test <- data.frame(boland_tcon@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
+                            ungroup() %>%
+                            t_test(CD4_PD1_signature1 ~ treatment) %>% 
+                            add_xy_position() %>%
+                            add_significance())
+
+p_boland <- boland_tcon@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = CD4_PD1_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "none") +
+    #scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "tcon T cells: Boland", 
+         y = "PD1 gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.signif",
+             tip.length = 0,
+             label.size = 8)
+
+grid.arrange(p_boland, p_luoma, nrow = 1, widths = c(1,2))
+```
+
+```{r cd4 Spt signature violins}
+
+stat.test <- data.frame(luoma_tcon@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(CD4_Spt_signature1 = mean(CD4_Spt_signature1)) %>%
+                            ungroup() %>%
+                            t_test(CD4_Spt_signature1 ~ treatment) %>% 
+                            add_xy_position())
+
+p_luoma <- luoma_tcon@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(CD4_Spt_signature1 = mean(CD4_Spt_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = CD4_Spt_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    #scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "tcon T cells: Luoma", 
+         y = "Spt gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.adj.signif",
+             tip.length = 0,
+             label.size = 8)
+
+## BOLAND
+stat.test <- data.frame(boland_tcon@meta.data %>%
+                            group_by(treatment,sample) %>%
+                            summarize(CD4_Spt_signature1 = mean(CD4_Spt_signature1)) %>%
+                            ungroup() %>%
+                            t_test(CD4_Spt_signature1 ~ treatment) %>% 
+                            add_xy_position() %>%
+                            add_significance())
+
+p_boland <- boland_tcon@meta.data %>%
+    group_by(treatment, sample) %>%
+    summarize(CD4_Spt_signature1 = mean(CD4_Spt_signature1)) %>%
+    ggplot(aes(x = treatment,
+               y = CD4_Spt_signature1)) +
+    geom_violin(aes(
+               color = treatment,
+               fill = treatment),
+               scale = "width",
+                adjust = 1,
+                trim = F,
+                alpha = 0.5,
+                draw_quantiles = c(0.25,0.5,0.75),
+                lwd = 1) +
+    geom_point(aes(color = treatment,
+               fill = treatment),
+               size = 5,
+               position = position_jitter(width = 0.4)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "none") +
+    #scale_y_continuous(limits = c(0.15, 0.45)) +
+    scale_color_manual(values = custom_colors("colitis")) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+    labs(title = "tcon T cells: Boland", 
+         y = "Spt gene signature", 
+         x = NULL,
+         color = NULL,
+         fill = NULL) +
+    add_pvalue(stat.test,
+             label = "p.signif",
+             tip.length = 0,
+             label.size = 8)
+
+grid.arrange(p_boland, p_luoma, nrow = 1, widths = c(1,2))
+```
+
 Create 2D plots showing the different gene signatures across the treatment groups:
 ```{r generated 2D plots}
 medians_2d <- boland_cd8@meta.data %>% 
   group_by(celltype,paper,pathology,sample) %>% 
-  summarize(PD1_score_median = median(PD1_signature1), Spt_score_median = median(Spt_signature1))
+  summarize(PD1_score_median = median(CD8_PD1_signature1), Spt_score_median = median(CD8_Spt_signature1))
 
 ggplot(boland_cd8@meta.data,
-       aes(x=PD1_signature1, y=Spt_signature1, group = treatment)) +
+       aes(x=PD1_signature1, y=Spt_signature1, group = pathology)) +
     stat_density_2d(geom = "polygon", 
-                    aes(alpha = ..level.., fill = treatment), bins = 6) +
+                    aes(alpha = ..level.., 
+                        fill = pathology), 
+                    bins = 6) +
     theme(panel.background = element_blank(),
           strip.background = element_blank(),
           panel.spacing.x = unit(0, "lines"),
@@ -226,13 +967,102 @@ ggplot(boland_cd8@meta.data,
           legend.title = element_blank(),
           panel.border = element_rect(colour = "black", fill=NA, size=1),
           legend.position = "top") +
-    scale_fill_manual(values = colpalette) +
-    scale_color_manual(values = colpalette) +
-    scale_alpha_binned(range = c(0.1,0.7)) +
-    labs(y = "TCF7 ModuleScore", x = "CXCR6 ModuleScore") + 
-    facet_grid(cols = vars(paper), scales="free") +
-    guides(alpha = "none") 
-    #geom_point(data = medians_2d %>% filter(celltype == "CD8"), aes(x=cxcr6_score_median,y=tcf7_score_median, color=pathology), size=4)
+    scale_fill_manual(values = custom_colors("colitis"), name = NULL) +
+    scale_color_manual(values = custom_colors("colitis"), name = NULL) +
+    scale_alpha_binned(range = c(0.2,0.9)) +
+    labs(y = "Spt ModuleScore", 
+         x = "PD1 ModuleScore") + 
+    facet_grid(cols = vars(paper), 
+               scales="free") +
+    guides(alpha = "none")  +
+    geom_point(data = medians_2d %>% filter(celltype == "CD8"), aes(x=PD1_score_median,y=Spt_score_median, color=pathology), size=4, alpha = 1)
+```
+
+Association with clonal expansion:
+```{r clonal expansion}
+seurat_merge <- merge(boland_cd8, list(corri, luoma_cd8))
+
+new_metadata <- seurat_merge@meta.data %>% 
+    rownames_to_column('barcode') %>%
+    filter(!is.na(raw_clonotype_id)) %>%
+    group_by(orig.ident,raw_clonotype_id) %>% 
+    mutate(clonotype_count = n()) %>% 
+    arrange(desc(clonotype_count)) %>% 
+    ungroup() %>% 
+    arrange(desc(clonotype_count)) %>% 
+    mutate(clonotype_id = paste0('clonotype',match(paste(orig.ident,raw_clonotype_id),unique(paste(orig.ident,raw_clonotype_id))))) %>%
+    mutate(clonotype_count_bin = cut(clonotype_count, 
+                                     breaks=c(0,1,3,20,170), labels=c("1","2-3","4-20","21-170"))) %>%
+    column_to_rownames('barcode') %>%
+    dplyr::select(clonotype_id,clonotype_count,clonotype_count_bin)
+
+seurat_merge <- AddMetaData(seurat_merge, metadata = new_metadata)
+
+medians_2d <- seurat_merge@meta.data %>% 
+  group_by(celltype, paper, treatment, sample) %>% 
+  summarize(PD1_score_median = median(CD8_PD1_signature1), mem_score_median = median(CD8_mem_signature1))
+
+ggplot(seurat_merge@meta.data %>% 
+         filter(!is.na(clonotype_id)),
+       aes(x=CD8_PD1_signature1, 
+           y=CD8_mem_signature1, 
+           group = treatment)) +
+    stat_density_2d(geom = "polygon", 
+                    aes(alpha = ..level.., 
+                        fill = treatment), 
+                    bins = 6) +
+    theme(panel.background = element_blank(),
+          panel.border = element_rect(color = "black", fill = NA),
+          panel.spacing = unit(0, "lines"),
+          strip.background = element_blank()) +
+    scale_fill_manual(values = custom_colors("colitis")) +
+  scale_color_manual(values = custom_colors("colitis")) +
+    labs(y = "Memory ModuleScore", 
+         x = "Texh/PD1 ModuleScore") + 
+    facet_wrap(paper ~ clonotype_count_bin) +
+    guides(alpha = "none") +
+  geom_point(data = medians_2d, aes(x = PD1_score_median, y = mem_score_median, color = treatment))
+
+#mouse next
+seurat_integrated <- AddModuleScore(seurat_integrated, list(PD1_markers %>% filter(p_val_adj < 0.05) %>% rownames()), name = "CD8_PD1_signature", assay = "RNA")
+seurat_integrated <- AddModuleScore(seurat_integrated, list(mem_markers %>% filter(p_val_adj < 0.05) %>% rownames()), name = "CD8_mem_signature", assay = "RNA")
+
+medians_2d <- pan8@meta.data %>% 
+   filter(!is.na(pan_clonotype_count) & celltype == "CD8") %>%
+  group_by(mouse_id, treatment, pan_clonotype_count_bin) %>% 
+  summarize(PD1_score_median = median(CD8_PD1_signature1), mem_score_median = median(CD8_mem_signature1))
+
+ggplot() +
+  stat_density_2d(data = pan8@meta.data %>% 
+                  filter(!is.na(pan_clonotype_count) & celltype == "CD8" & treatment == "IgG") %>%
+                  dplyr::select(-treatment),
+                    geom = "polygon", 
+                    aes(alpha = ..level..,
+                        x=CD8_PD1_signature1, 
+                        y=CD8_mem_signature1), 
+                    bins = 6, fill = "black") +
+    geom_point(data = medians_2d %>% filter(treatment == "IgG") %>% ungroup() %>% dplyr::select(-treatment), 
+               aes(x = PD1_score_median, y = mem_score_median)) +
+    stat_density_2d(data = pan8@meta.data %>% 
+         filter(!is.na(pan_clonotype_count) & celltype == "CD8" & treatment != "IgG"),
+                    geom = "polygon", 
+                    aes(alpha = ..level.., 
+                        fill = treatment,
+                        x=CD8_PD1_signature1, 
+                        y=CD8_mem_signature1), 
+                    bins = 6) +
+    theme(panel.background = element_blank(),
+          panel.border = element_rect(color = "black", fill = NA),
+          panel.spacing = unit(0, "lines"),
+          strip.background = element_blank()) +
+    scale_fill_manual(values = custom_colors("treatments")) +
+  scale_color_manual(values = custom_colors("treatments")) +
+    labs(y = "Memory ModuleScore", 
+         x = "Texh/PD1 ModuleScore") + 
+    facet_wrap(treatment ~ pan_clonotype_count_bin, ncol = 5) +
+    guides(alpha = "none") +
+  scale_alpha_continuous(range = c(0.1,0.5)) +
+  geom_point(data = medians_2d %>% filter(treatment != "IgG"), aes(x = PD1_score_median, y = mem_score_median, color = treatment))
 ```
 
 CT = healthy controls; NC = CPI + no colitis; C = CPI + colitis

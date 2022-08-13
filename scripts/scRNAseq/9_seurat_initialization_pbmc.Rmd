@@ -100,55 +100,306 @@ p_cluster + p_markers
 
 saveRDS(seurat_object, "objects/pbmc/seurat_pbmc.rds")
 ```
-Next, subset the CD8 T cells based on CD8A expression and certain clusters.
-```{r subset CD8 T cells}
-pbmc <- subset(seurat_object, cells = WhichCells(seurat_object, expression = CD8A > 0 & CD3E > 0 & CD44 > 0))
-pbmc <- ScaleData(pbmc, verbose = FALSE) #scale the RNA data
-pbmc <- RunPCA(pbmc, npcs = 30, verbose = FALSE, features = rownames(x = pbmc)) #run PCA
-pbmc <- RunUMAP(pbmc, reduction = "pca", dims = 1:30)
-pbmc <- FindNeighbors(pbmc, reduction = "pca", dims = 1:30)
-pbmc <- FindClusters(pbmc, resolution = 0.2)
-p_cluster <- DimPlot(pbmc, reduction = "umap", label = TRUE, label.size = 5) + theme(legend.position = "none")
-p_markers <- DimPlot(pbmc, group.by = "adverse_event")
+
+```{r Seurat integration by tissue}
+split_seurat <- SplitObject(seurat_object, split.by = "orig.ident") # Split the seurat object for finding integration anchors
+
+# Normalize the split data by tissue and define variable features for each
+split_seurat <- lapply(X = split_seurat, FUN = function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+seurat_anchors <- FindIntegrationAnchors(object.list = split_seurat, dims = 1:20) # Define anchors and integrate data (warning: takes a long time)
+saveRDS(seurat_anchors, file='objects/pbmc/pbmc_anchors.rds') # Save anchors just in case
+
+seurat_integrated <- IntegrateData(anchorset = seurat_anchors, dims = 1:20) # Integrate Seurat data using anchors
+DefaultAssay(seurat_integrated) <- "integrated"
+
+saveRDS(seurat_integrated, file='objects/pbmc/pbmc_integrated.rds') # Save integrated Seurat object
+```
+
+```{r cluster}
+
+new_metadata <- data.frame(coinh_count = rowSums(as.data.frame(t(as.data.frame(seurat_integrated@assays$RNA@data[c("PDCD1","HAVCR2","CTLA4","LAG3","TIGIT","CD160"),]))) > 0))
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+
+seurat_integrated <- ScaleData(seurat_integrated, verbose = FALSE) #scale the RNA data
+seurat_integrated <- RunPCA(seurat_integrated, npcs = 30, verbose = FALSE, features = rownames(x = seurat_integrated)) #run PCA
+seurat_integrated <- RunUMAP(seurat_integrated, reduction = "pca", dims = 1:30)
+seurat_integrated <- FindNeighbors(seurat_integrated, reduction = "pca", dims = 1:30)
+seurat_integrated <- FindClusters(seurat_integrated, resolution = 0.9)
+p_cluster <- DimPlot(seurat_integrated, reduction = "umap", label = TRUE, label.size = 5) + theme(legend.position = "none")
+p_markers <- DimPlot(seurat_integrated, group.by = "adverse_event")
+p_cluster + p_markers
+```
+```{r cluster}
+new_metadata <- data.frame(t(as.matrix(seurat_integrated@assays$RNA[c("CD8A", "CD4","KLRK1","ITGA4","CXCR3","ITGB1","TIGIT","CD38"),])))
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+seurat_integrated@meta.data %>% 
+    group_by(seurat_clusters) %>% 
+    summarize(CD8A = mean(CD8A), CD4 = mean(CD4)) %>% 
+    mutate(ratio = CD8A/CD4) %>%
+    filter(ratio > 1) %>% 
+    pull(seurat_clusters)
+
+cd8_clusters <- c(1,19)
+
+seurat_integrated <- subset(seurat_integrated, idents = cd8_clusters)
+seurat_integrated <- ScaleData(seurat_integrated, verbose = FALSE) #scale the RNA data
+seurat_integrated <- RunPCA(seurat_integrated, npcs = 30, verbose = FALSE, features = rownames(x = seurat_integrated)) #run PCA
+seurat_integrated <- RunUMAP(seurat_integrated, reduction = "pca", dims = 1:30)
+seurat_integrated <- FindNeighbors(seurat_integrated, reduction = "pca", dims = 1:30)
+seurat_integrated <- FindClusters(seurat_integrated, resolution = 0.8)
+p_cluster <- DimPlot(seurat_integrated, reduction = "umap", label = TRUE, label.size = 5) + theme(legend.position = "none")
+p_markers <- DimPlot(seurat_integrated, group.by = "adverse_event")
 p_cluster + p_markers
 
-seurat_markers <- FindAllMarkers(pbmc, min.pct = 0.25, only.pos = T, logfc.threshold = 0.25) %>%
-                     group_by(cluster) %>%
-                     filter(p_val_adj < 0.05) %>%
-                     group_by(cluster) %>%
-                     arrange(desc(avg_log2FC), .by_group = T) %>%
-                     top_n(n = 50, wt = avg_log2FC)
-
+saveRDS(seurat_integrated, "objects/pbmc/seurat_CD8.rds")
+saveRDS(cd8_markers, "objects/pbmc/seurat_CD8_markers.rds")
 ```
 
 
-```{r project gene signature onto PBMC}
-Idents(seurat_integrated) <- seurat_integrated$tissue
-seurat_bld <- subset(seurat_integrated, idents = "blood") #subset on T cells in blood
-Idents(seurat_bld) <- seurat_bld$celltype
-seurat_bld <- subset(seurat_bld, idents = "CD8") #subset on T cells in blood
-Idents(seurat_bld) <- seurat_bld$treatment
+```{r project gene signatures onto PBMC}
 
-#get PD1_PM and find markers against all else in blood
-# new_metadata <- seurat_bld@meta.data %>% 
-#                   mutate(pd1_pm_signature = case_when(treatment == "PD1" & pancreas_matching == "PM" ~ "PD1_PM",
-#                                                        treatment != "PD1" & pancreas_matching %in% c("PM","non-PM") ~ "non_PD1_PM",
-#                                                        TRUE ~ NA_character_)) %>% 
-#                   dplyr::select(pd1_pm_signature)
-
-#seurat_bld <- AddMetaData(seurat_bld, new_metadata)
-markers <- FindMarkers(seurat_bld, 
-                       ident.1 = "PM", 
-                       ident.2 = "non-PM", 
-                       group.by = "pancreas_matching",
-                       subset.ident = "PD1") %>% 
-            filter(p_val_adj<0.05) %>%
+ifn <- FindMarkers(seurat_integrated, 
+                       ident.1 = "Interferon_sensing",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05) %>%
+            arrange(desc(avg_log2FC))
+texh <- FindMarkers(seurat_integrated, 
+                       ident.1 = "CD8_texh",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05) %>%
+            arrange(desc(avg_log2FC))
+prolif <- FindMarkers(seurat_integrated, 
+                       ident.1 = "Proliferating",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05) %>%
+            arrange(desc(avg_log2FC))
+eff <- FindMarkers(seurat_integrated, 
+                       ident.1 = "CD8_eff",
+                      ident.2 = "CD8_cm",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05) %>%
+            arrange(desc(avg_log2FC))
+pm <- FindMarkers(seurat_integrated, 
+                       ident.1 = "PM",
+                      ident.2 = "non-PM",
+                      group.by = "pancreas_matching") %>% 
+            filter(p_val_adj < 0.05) %>%
             arrange(desc(avg_log2FC))
 
-pm_signature <- convertMouseGeneList(markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+ifn_signature <- convertMouseGeneList(ifn %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+texh_signature <- convertMouseGeneList(texh %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+prolif_signature <- convertMouseGeneList(prolif %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+eff_signature <- convertMouseGeneList(eff %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+pm_signature <- convertMouseGeneList(pm %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
 
-#luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(pm_signature), name = "pm_signature")
-#corri <- AddModuleScore(corri, features = list(pm_signature), name = "pm_signature")
-#boland_cd8 <- AddModuleScore(boland_cd8, features = list(pm_signature), name = "pm_signature")
+cd8 <- AddModuleScore(cd8, features = list(ifn_signature), name = "ifn_signature")
+cd8 <- AddModuleScore(cd8, features = list(texh_signature), name = "texh_signature")
+cd8 <- AddModuleScore(cd8, features = list(prolif_signature), name = "prolif_signature")
+cd8 <- AddModuleScore(cd8, features = list(eff_signature), name = "eff_signature")
+cd8 <- AddModuleScore(cd8, features = list(pm_signature), name = "pm_signature")
+
+Tcon_prog <- FindMarkers(seurat_integrated, 
+                       ident.1 = "Tcon_prog",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05) %>%
+            arrange(desc(avg_log2FC))
+
+Tcon_prog_signature <- convertMouseGeneList(Tcon_prog %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+
+cd4 <- AddModuleScore(cd4, features = list(Tcon_prog_signature), name = "Tcon_prog_signature")
+
+```
+
+```{r plot the data}
+stat.test <- data.frame(cd8@meta.data %>%
+                            group_by(adverse_event,orig.ident) %>%
+                            summarize(ifn_signature1 = mean(texh_signature1)) %>%
+                            ungroup() %>%
+                            t_test(ifn_signature1 ~ adverse_event) %>% 
+                            add_significance() %>%
+                            add_xy_position())
+
+p_texh_patient <- cd8@meta.data %>%
+            group_by(adverse_event, orig.ident) %>%
+            summarize(texh_signature = mean(texh_signature1)) %>%
+            ggplot(aes(x = adverse_event,
+                       y = texh_signature)) +
+            geom_violin(aes(
+                       color = adverse_event,
+                       fill = adverse_event),
+                       scale = "width",
+                        adjust = 1,
+                        trim = F,
+                        alpha = 0.5,
+                        draw_quantiles = c(0.25,0.5,0.75),
+                        lwd = 1) +
+            geom_point(aes(color = adverse_event,
+                       fill = adverse_event),
+                       size = 5,
+                       position = position_jitter(width = 0.4)) +
+            theme_minimal() +
+            theme(panel.grid = element_blank(),
+                  panel.border = element_rect(color = "black", 
+                                              fill = NA),
+                  text = element_text(size = 15),
+                  legend.position = "right") +
+            scale_color_manual(values = custom_colors("colitis")) +
+            scale_fill_manual(values = custom_colors("colitis")) +
+            labs(title = "CD8+ T cells blood", 
+                 y = "Terminally exhausted/effector-like gene signature", 
+                 x = NULL,
+                 color = NULL,
+                 fill = NULL) +
+            add_pvalue(stat.test,
+                     label = "p.signif",
+                     tip.length = 0,
+                     label.size = 8)
+
+stat.test <- data.frame(cd8@meta.data %>%
+                            t_test(texh_signature1 ~ adverse_event) %>% 
+                            add_significance() %>%
+                            add_xy_position())
+
+p_texh_cells <- cd8@meta.data %>%
+            ggplot(aes(x = adverse_event,
+                       y = texh_signature1)) +
+            geom_violin(aes(
+                       color = adverse_event,
+                       fill = adverse_event),
+                       scale = "width",
+                        adjust = 1,
+                        trim = F,
+                        alpha = 0.5,
+                        draw_quantiles = c(0.25,0.5,0.75),
+                        lwd = 1) +
+            theme_minimal() +
+            theme(panel.grid = element_blank(),
+                  panel.border = element_rect(color = "black", 
+                                              fill = NA),
+                  text = element_text(size = 15),
+                  legend.position = "right") +
+            scale_color_manual(values = custom_colors("colitis")) +
+            scale_fill_manual(values = custom_colors("colitis")) +
+            labs(title = "CD8+ T cells blood", 
+                 y = "PD1 gene signature", 
+                 x = NULL,
+                 color = NULL,
+                 fill = NULL) +
+            add_pvalue(stat.test,
+                     label = "p.signif",
+                     tip.length = 0,
+                     label.size = 8)
+
+grid.arrange(p_texh_cells, p_texh_patient, ncol = 2)
+
+new_metadata <- cd8@meta.data %>% mutate(texh_group = ifelse(texh_signature1 > mean(cd8$texh_signature1), "pos", "neg")) %>% dplyr::select(texh_group)
+cd8 <- AddMetaData(cd8, new_metadata)
+
+new_metadata <- data.frame(t(as.matrix(cd8@assays$RNA[c("CD38"),])))
+cd8 <- AddMetaData(cd8, new_metadata)
+
+new_metadata <- as.data.frame(cd8@reductions$umap@cell.embeddings)
+cd8 <- AddMetaData(cd8, new_metadata)
+
+cd8$adverse_event <- factor(cd8$adverse_event, levels = c("none","irAE"))
+
+p_umaps <- cd8@meta.data %>% 
+    ggplot(aes(x = UMAP_1, 
+               y = UMAP_2, 
+               color = pm_signature1)) + 
+    geom_point(shape = 16) +
+    theme_minimal() +
+    theme(axis.title = element_blank(),
+          axis.text = element_blank(),
+          panel.grid = element_blank(),
+          text = element_text(size = 15),
+          legend.position = "none",
+          legend.key.height = unit(0.25,"cm")) +
+    labs(color= NULL,
+         title = NULL) +
+    scale_color_gradient(low = "azure2", high = "blue4") +
+  facet_wrap(~adverse_event) +
+    guides(color = guide_colorbar(ticks = F)) #removes ticks from colorbar
+
+p_allcells <- cd8@meta.data %>%
+    ggplot(aes(x = adverse_event,
+               y = pm_signature1)) +
+    geom_violin(aes(
+        color = adverse_event,
+        fill = adverse_event),
+        scale = "width",
+        adjust = 1,
+        trim = F,
+        alpha = 0.5,
+        draw_quantiles = c(0.25,0.5,0.75),
+        lwd = 1) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    scale_color_manual(values = c("irAE" = "purple", "none" = "black")) +
+    scale_fill_manual(values = c("irAE" = "purple", "none" = "black")) +
+    labs(title = "CD8+ T cells blood", 
+         y = NULL, 
+         x = NULL,
+         color = NULL,
+         fill = NULL)+ 
+  add_pvalue(seurat_integrated@meta.data%>%
+                                    t_test(pm_signature1~adverse_event)%>%
+                                    add_significance()%>%
+                                    add_xy_position(),
+                                  label.size=5)
+
+
+p_patients <- cd8@meta.data %>%
+  group_by(adverse_event, orig.ident) %>%
+  summarize(pm_signature = mean(pm_signature1)) %>%
+    ggplot(aes(x = adverse_event,
+               y = pm_signature)) +
+    geom_violin(aes(
+        color = adverse_event,
+        fill = adverse_event),
+        scale = "width",
+        adjust = 1,
+        trim = F,
+        alpha = 0.5,
+        draw_quantiles = c(0.25,0.5,0.75),
+        lwd = 1) +
+  geom_point(aes(
+        color = adverse_event,
+        fill = adverse_event),
+        size = 5) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      fill = NA),
+          text = element_text(size = 15),
+          legend.position = "right") +
+    scale_color_manual(values = c("irAE" = "purple", "none" = "black")) +
+    scale_fill_manual(values = c("irAE" = "purple", "none" = "black")) +
+    labs(title = "CD8+ T cells blood", 
+         y = NULL, 
+         x = NULL,
+         color = NULL,
+         fill = NULL)+ 
+  add_pvalue(seurat_integrated@meta.data%>%
+                 group_by(adverse_event, orig.ident) %>%
+  summarize(pm_signature = mean(pm_signature1)) %>% 
+    ungroup() %>%
+                                    t_test(pm_signature~adverse_event)%>%
+                                    add_significance()%>%
+                                    add_xy_position() %>%
+    filter(p < 0.05),
+                                  label.size=5)
+    
+    grid.arrange(p_umaps, p_allcells, p_patients, widths = c(2,1,1))
 ```
 
