@@ -266,6 +266,7 @@ p_nod_texh <- cd8_merge@meta.data %>%
                 facet_wrap(~paper, scales = "free_x") + 
                 scale_fill_manual(values = custom_colors("colitis")) + 
                 scale_color_manual(values = custom_colors("colitis")) +
+  scale_y_continuous(limits = c(0.15,0.4), breaks = c(0.2,0.3,0.4)) +
                 labs(y = "Terminally exhausted/effector-like module score") +
                 add_pvalue(data.frame(cd8_merge@meta.data %>% 
                                           group_by(pathology, paper, sample) %>% 
@@ -276,7 +277,44 @@ p_nod_texh <- cd8_merge@meta.data %>%
                                           add_xy_position()),
                            tip.length = 0)
 
-grid.arrange(p_miller_texh, p_nod_texh, nrow = 2)
+p_nod_eff <- cd8_merge@meta.data %>% 
+                group_by(pathology, paper, sample) %>% 
+                summarize(avg = mean(eff_signature1)) %>%
+                ggplot() + 
+                geom_violin(aes(x = pathology, 
+                                fill = pathology, 
+                                y = avg, 
+                                color = pathology),
+                            alpha = 0.5,
+                            adjust = 1,
+                            draw_quantiles = c(0.25,0.5,0.75),
+                            scale = "width") + 
+                geom_point(aes(x = pathology, 
+                               fill = pathology, 
+                               y = avg, 
+                               color = pathology),
+                           size = 4,
+                           position = position_jitter()) + 
+                theme_minimal() + 
+                theme(panel.spacing = unit(0,"lines"),
+                      axis.title.x = element_blank(),
+                      panel.grid = element_blank(),
+                      panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                facet_wrap(~paper, scales = "free_x") + 
+                scale_fill_manual(values = custom_colors("colitis")) + 
+  scale_y_continuous(limits = c(0.15,0.4), breaks = c(0.2,0.3,0.4)) +
+                scale_color_manual(values = custom_colors("colitis")) +
+                labs(y = "Terminally exhausted/effector-like module score") +
+                add_pvalue(data.frame(cd8_merge@meta.data %>% 
+                                          group_by(pathology, paper, sample) %>% 
+                                          summarize(avg = mean(eff_signature1)) %>% 
+                                          ungroup() %>%
+                                          group_by(paper) %>%
+                                          t_test(avg ~ pathology) %>% 
+                                          add_xy_position()),
+                           tip.length = 0)
+
+grid.arrange(p_cd8_coinh, p_nod_texh, p_nod_eff, nrow = 3)
 ```
 
 ```{r identify overlapping genes in exhaustion signatures}
@@ -296,7 +334,7 @@ seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 seurat_integrated@meta.data %>%
     group_by(treatment, mouse_id, tissue) %>%
     summarize(Cd38 = mean(Cd38)) %>%
-    ggplot(aes(x = tissue, y = Cd38, fill = treatment, color = treatment)) +
+    ggplot(aes(x = treatment, y = Cd38, fill = treatment, color = treatment)) +
     geom_violin(alpha = 0.5,
                 adjust = 1,
                 draw_quantiles = c(0.25,0.5,0.75),
@@ -314,6 +352,24 @@ seurat_integrated@meta.data %>%
     scale_color_manual(values = custom_colors("treatments")) +
     labs(y = "Cd38 expression") +
     facet_wrap(~ tissue, scales = "free_x")
+
+seurat_integrated@meta.data %>% 
+  filter(tissue == "blood" & seurat_clusters != "Acinar_contaminated") %>%
+    group_by(mouse_id, seurat_clusters) %>%
+    summarize(Cd38 = mean(Cd38)) %>%
+    ggplot(aes(y = seurat_clusters, x = Cd38, fill = seurat_clusters, color = seurat_clusters)) +
+    geom_boxplot(alpha = 0.5,
+                outlier.shape = NA) + 
+    theme_minimal() + 
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    scale_color_manual(values = custom_colors("clusters")) +
+    labs(x = "Cd38 expression", y = NULL)
 
 seurat_integrated@meta.data %>%
     group_by(treatment, mouse_id, tissue) %>%
@@ -1000,12 +1056,12 @@ seurat_merge <- AddMetaData(seurat_merge, metadata = new_metadata)
 
 medians_2d <- seurat_merge@meta.data %>% 
   group_by(celltype, paper, treatment, sample) %>% 
-  summarize(PD1_score_median = median(CD8_PD1_signature1), mem_score_median = median(CD8_mem_signature1))
+  summarize(PD1_score_median = median(texh_signature1), mem_score_median = median(cm_signature1))
 
 ggplot(seurat_merge@meta.data %>% 
          filter(!is.na(clonotype_id)),
-       aes(x=CD8_PD1_signature1, 
-           y=CD8_mem_signature1, 
+       aes(x=texh_signature1, 
+           y=cm_signature1, 
            group = treatment)) +
     stat_density_2d(geom = "polygon", 
                     aes(alpha = ..level.., 
