@@ -368,6 +368,68 @@ p_diversities_pm_pan <- diversities %>%
 
 ```
 
+```{r upset plot and heatmap of shared clusters in blood PM}
+cluster_labels <- levels(factor(pan8$seurat_clusters))
+heatmap_df <- data.frame(matrix(ncol = length(cluster_labels), nrow = length(cluster_labels)), row.names = cluster_labels)
+colnames(heatmap_df) <- cluster_labels
+
+clonotype_sharing <- seurat_integrated@meta.data %>%
+                        filter(!is.na(clonotype_id)) %>%
+                        dplyr::select(treatment,clonotype_id,seurat_clusters) %>%
+                        unique() %>% mutate(index = TRUE) %>%
+                        pivot_wider(c(treatment, clonotype_id), names_from = seurat_clusters, values_from = index, values_fill = FALSE)
+
+for (i in 1:(length(cluster_labels)-1)) {
+  for (j in (i+1):length(cluster_labels)) {
+    filter_string <- paste0(cluster_labels[i], " & ", cluster_labels[j])
+    heatmap_df[i,j] <- clonotype_sharing %>%
+                        filter(!! rlang::parse_expr(filter_string)) %>% 
+                        nrow()
+  }
+}
+
+
+clonos_of_interest <- seurat_integrated@meta.data %>% 
+                        filter(treatment == "PD1" & seurat_clusters == "CD8_texh" & pancreas_matching == "PM") %>% 
+                        pull(clonotype_id)
+df <- seurat_integrated@meta.data %>% 
+          filter(clonotype_id %in% clonos_of_interest) %>% 
+          group_by(treatment,mouse_id,clonotype_id,clonotype_count,seurat_clusters) %>% 
+          unique() %>% 
+          dplyr::select(treatment,mouse_id,clonotype_id,clonotype_count,seurat_clusters) %>% 
+          summarize() %>%
+          mutate(index = T) %>% 
+          pivot_wider(c(treatment,mouse_id,clonotype_id,clonotype_count), names_from = seurat_clusters, values_from = index) %>% 
+          mutate_all(replace_na, F)
+cluster_labels <- rev(levels(factor(pan8$seurat_clusters))) #determines the order of the clusters in the table
+df$num_unique_clusters <- rowSums(df[,5:15])
+df$grouping <- apply(df, 1, function(x) paste(colnames(df)[5:15][x[5:15] == T], collapse = "&")) #add a column that concatenates all the seurat clusters that a clonotype includes
+upset(df, cluster_labels, set_sizes = F, sort_sets = F, width_ratio = 0.1, min_size = 2,  keep_empty_groups=TRUE) +
+    ggtitle("Terminally exhausted/effector-like shared") + 
+  theme_minimal() +
+  theme(text = element_text(size = 15))
+
+clonos_of_interest <- pan8@meta.data %>% 
+                        filter(pancreas_matching == "PM" & treatment == "Spt" & seurat_clusters == "CD8_pexh") %>% 
+                        pull(clonotype_id)
+df <- seurat_integrated@meta.data %>% 
+          filter(clonotype_id %in% clonos_of_interest) %>% 
+          group_by(treatment,mouse_id,clonotype_id,clonotype_count,seurat_clusters) %>% 
+          unique() %>% 
+          dplyr::select(treatment,mouse_id,clonotype_id,clonotype_count,seurat_clusters) %>% 
+          summarize() %>%
+          mutate(index = T) %>% 
+          pivot_wider(c(treatment,mouse_id,clonotype_id,clonotype_count), names_from = seurat_clusters, values_from = index) %>% 
+          mutate_all(replace_na, F)
+cluster_labels <- rev(levels(factor(pan8$seurat_clusters))) #determines the order of the clusters in the table
+df$num_unique_clusters <- rowSums(df[,5:14])
+df$grouping <- apply(df, 1, function(x) paste(colnames(df)[5:14][x[5:14] == T], collapse = "&")) #add a column that concatenates all the seurat clusters that a clonotype includes
+upset(df, cluster_labels[-11], set_sizes = F, sort_sets = F, width_ratio = 0.1, min_size = 2,  keep_empty_groups=TRUE) +
+    ggtitle("Terminally exhausted/effector-like shared") + 
+  theme_minimal() +
+  theme(text = element_text(size = 15))
+```
+
 ```{r percent blood PM matching}
 rbind(seurat_integrated@meta.data %>% 
           filter(!is.na(pancreas_matching) & cd4_or_cd8 == "CD4" & tissue == "blood") %>% 
@@ -432,6 +494,22 @@ rbind(seurat_integrated@meta.data %>%
                scales = "free_y") +
     labs(y = "PM (%)",
          title = "T cells in blood")
+```
+
+```{r PM in NRP-v7+ tetramer-specific T cells}
+
+seurat_integrated@meta.data %>% 
+    filter(!is.na(pancreas_matching)) %>% 
+    mutate(andreas_tetramer_specificity = ifelse(is.na(andreas_tetramer_specificity), "unknown", "NRP-v7")) %>%
+    group_by(andreas_tetramer_specificity, pancreas_matching) %>% 
+    tally() %>% 
+    ggplot(aes(x=andreas_tetramer_specificity, y=n, fill = pancreas_matching)) + 
+    geom_bar(stat="identity", position = "fill") +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          axis.title.x = element_blank()) +
+    scale_fill_manual(values = custom_colors("pm")) + 
+  coord_flip()
 ```
 
 Show the top 50 clonotypes as a percentage of TCRs detected in the BLOOD as a cumulative sum and also the clone sizes for the different treatment groups.
@@ -926,6 +1004,18 @@ length(setdiff(Reduce(intersect, list(up_pm[["PD1"]], up_pm[["Spt"]])), common_t
 length(setdiff(Reduce(intersect, list(up_pm[["PD1"]], up_pm[["IgG"]])), common_to_all_treatments))
 length(setdiff(Reduce(intersect, list(up_pm[["IgG"]], up_pm[["Spt"]])), common_to_all_treatments))
 
+write.csv(rbind(data.frame(gene = setdiff(up_pm[["IgG"]],c(up_pm[["PD1"]], up_pm[["Spt"]])), treatment_group = "IgG"),
+      data.frame(gene = setdiff(up_pm[["Spt"]],c(up_pm[["PD1"]], up_pm[["IgG"]])), treatment_group = "Spt"),
+      data.frame(gene = setdiff(up_pm[["PD1"]],c(up_pm[["IgG"]], up_pm[["Spt"]])), treatment_group = "PD1"),
+      data.frame(gene = common_to_all_treatments, treatment_group = "IgG-Spt-PD1"),
+      data.frame(gene = setdiff(Reduce(intersect, list(up_pm[["PD1"]], up_pm[["Spt"]])), common_to_all_treatments), treatment_group = "PD1-Spt"),
+      data.frame(gene = setdiff(Reduce(intersect, list(up_pm[["PD1"]], up_pm[["IgG"]])), common_to_all_treatments), treatment_group = "PD1-IgG"),
+      data.frame(gene = setdiff(Reduce(intersect, list(up_pm[["IgG"]], up_pm[["Spt"]])), common_to_all_treatments), treatment_group = "IgG-Spt")),
+      "output/upregulated_genes.tsv", 
+      quote = F, 
+      col.names = F, 
+      row.names = F)
+
 dn_pm <- list()
 allvolcano %>% filter(celltype == "CD8" & DE == "non-PM" & treatment == "IgG") %>% pull(gene) -> dn_pm[["IgG"]]
 allvolcano %>% filter(celltype == "CD8" & DE == "non-PM" & treatment == "PD1") %>% pull(gene) -> dn_pm[["PD1"]]
@@ -941,6 +1031,18 @@ length(common_to_all_treatments)
 length(setdiff(Reduce(intersect, list(dn_pm[["PD1"]], dn_pm[["Spt"]])), common_to_all_treatments))
 length(setdiff(Reduce(intersect, list(dn_pm[["PD1"]], dn_pm[["IgG"]])), common_to_all_treatments))
 length(setdiff(Reduce(intersect, list(dn_pm[["IgG"]], dn_pm[["Spt"]])), common_to_all_treatments))
+
+write.csv(rbind(data.frame(gene = setdiff(dn_pm[["IgG"]],c(dn_pm[["PD1"]], dn_pm[["Spt"]])), treatment_grodn = "IgG"),
+      data.frame(gene = setdiff(dn_pm[["Spt"]],c(dn_pm[["PD1"]], dn_pm[["IgG"]])), treatment_grodn = "Spt"),
+      data.frame(gene = setdiff(dn_pm[["PD1"]],c(dn_pm[["IgG"]], dn_pm[["Spt"]])), treatment_grodn = "PD1"),
+      data.frame(gene = common_to_all_treatments, treatment_grodn = "IgG-Spt-PD1"),
+      data.frame(gene = setdiff(Reduce(intersect, list(dn_pm[["PD1"]], dn_pm[["Spt"]])), common_to_all_treatments), treatment_grodn = "PD1-Spt"),
+      data.frame(gene = setdiff(Reduce(intersect, list(dn_pm[["PD1"]], dn_pm[["IgG"]])), common_to_all_treatments), treatment_grodn = "PD1-IgG"),
+      data.frame(gene = setdiff(Reduce(intersect, list(dn_pm[["IgG"]], dn_pm[["Spt"]])), common_to_all_treatments), treatment_grodn = "IgG-Spt")),
+      "output/dnregulated_genes.tsv", 
+      quote = F, 
+      col.names = F, 
+      row.names = F)
 
 #BARCHARTS OF DE GENES ACROSS PM AND NON-PM
 Idents(seurat_bld) <- seurat_bld$celltype
@@ -1038,6 +1140,52 @@ newdata %>% ggplot(aes(y = gene, x = avg_log2FC, fill = DE)) +
         axis.title.y = element_blank()) +
   scale_fill_manual(values = custom_colors("pm")) +
   geom_text(aes(label = signif(p_val_adj, digits = 3)))
+```
+
+```{r representative UMAPs of PM and non-PM clusters}
+
+seurat_integrated@meta.data %>% 
+  filter(!is.na(pancreas_matching)) %>%
+  dplyr::select(treatment,
+                pancreas_matching, 
+                seurat_clusters,
+                allcells_UMAP_1, 
+                allcells_UMAP_2) %>% 
+  group_by(seurat_clusters) %>% 
+  mutate(U1 = mean(allcells_UMAP_1),
+         U2 = mean(allcells_UMAP_2)) %>%
+  group_by(treatment,
+           pancreas_matching, 
+           seurat_clusters, U1, U2) %>% 
+  summarise(num_cells = n(),
+            .groups = "keep") %>%
+  ggplot() +
+  geom_point(data = seurat_integrated@meta.data %>%
+               dplyr::select(-treatment) %>%
+               dplyr::select(-pancreas_matching),
+             aes(x = allcells_UMAP_1, 
+                 y = allcells_UMAP_2),
+             shape = 16,
+             color = "grey90") +
+  geom_point(aes(x = U1,
+                 y = U2,
+                 size = num_cells,
+                 color = seurat_clusters),
+             shape = 16) +
+  theme_minimal() +
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        panel.grid = element_blank(),
+        legend.position = "none",
+        text = element_blank()) +
+  labs(color = NULL) +
+  scale_color_manual(values = custom_colors("clusters")) +
+  scale_size_continuous(range = c(5,25)) +
+  guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                  size = 5, 
+                                                  shape = 19))) +
+  facet_wrap(treatment ~ pancreas_matching, ncol = 2) +
+  geom_text(aes(x = U1, y = U2, label = num_cells), color = "black", size = 5, fontface = "bold")
 ```
 
 Plot how clones that "feed" into the main clusters in the pancreas differ in transcriptional profile. Stacked bar plots and UMAPs will be generated to highlight the differences.
