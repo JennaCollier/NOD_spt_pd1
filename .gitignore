@@ -1,5 +1,7 @@
 # Data files
 /data
+/adobe
+/output
 
 # R objects
 /objects
