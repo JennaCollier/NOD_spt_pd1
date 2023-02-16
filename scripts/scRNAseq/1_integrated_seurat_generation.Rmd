@@ -875,6 +875,13 @@ p_top50_clonos <- cumulative_sums %>%
                             facet_wrap(~ treatment, scales = "free_x")
 ```
 
+```{r Save list of TCRs}
+write.csv(seurat_integrated@meta.data %>% 
+            dplyr::select(treatment, tissue, mouse_id, celltype, clonotype_id, TRA.v_gene, TRA.j_gene, TRA.c_gene, TRA.cdr3_nt, TRA.cdr3, TRB.v_gene, TRB.j_gene, TRB.c_gene, TRB.cdr3_nt, TRB.cdr3) %>% 
+            filter(!is.na(clonotype_id)),
+          file = "output/tableS7.csv")
+```
+
 Finally, add the new metadata from the integrated Seurat back to the separate Seurats of the CD4 and CD8 T cells and then save.
 ```{r save seurat object}
 new_metadata <- seurat_integrated@meta.data #take all the metadata from the integrated Seurat and add to the subsetted objects

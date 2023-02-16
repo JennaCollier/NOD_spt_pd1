@@ -720,6 +720,66 @@ dotplot <- df_fgsea %>%
 plot_grid(ggtree_plot, dotplot, nrow = 1, rel_widths = c(0.3,2), align = 'h')
 ```
 
+```{r Module scores from literature}
+Idents(seurat_integrated) <- seurat_integrated$celltype
+cd8_clusters <- subset(seurat_integrated, idents = "CD8")
+
+cd8_clusters <- AddModuleScore(cd8_clusters, 
+                               features = list(read_excel("gene_signatures/CD8_exhausted_Hu.xlsx", col_names = "gene")$gene),
+                               name = "hu_et_al", 
+                               assay = "RNA")
+cd8_clusters <- AddModuleScore(cd8_clusters, 
+                               features = list(read_excel("gene_signatures/CD8_0_Zakharov.xlsx", col_names = "gene")$gene),
+                               name = "CD8_0_Zakharov",
+                               assay = "RNA")
+
+hu <- cd8_clusters@meta.data %>%
+    ggplot(aes(x = factor(seurat_clusters, levels = rev(levels(cd8$seurat_clusters))), 
+               y = hu_et_al1, 
+               color = seurat_clusters, 
+               fill = seurat_clusters)) + 
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.ticks.y = element_line(),
+          panel.grid = element_blank(),
+          panel.spacing = unit(0, "cm"),
+          strip.text = element_blank(),
+          panel.border = element_rect(color = "black", fill = NA)) +
+    geom_violin(scale = "width", 
+                adjust = 2,
+                width = 0.6,
+                alpha = 0.2, 
+                draw_quantiles = c(0.5),
+                position = position_dodge(0.9)) + 
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    scale_color_manual(values = custom_colors("clusters")) + 
+    facet_wrap(~seurat_clusters, nrow = 1, scales = "free_x")
+
+cd8_0 <- cd8_clusters@meta.data %>%
+    ggplot(aes(x = factor(seurat_clusters, levels = rev(levels(cd8$seurat_clusters))), 
+               y = CD8_0_Zakharov1, 
+               color = seurat_clusters, 
+               fill = seurat_clusters)) + 
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.ticks.y = element_line(),
+          panel.grid = element_blank(),
+          panel.spacing = unit(0, "cm"),
+          strip.text = element_blank(),
+          panel.border = element_rect(color = "black", fill = NA)) +
+    geom_violin(scale = "width", 
+                adjust = 2,
+                width = 0.6,
+                alpha = 0.2, 
+                draw_quantiles = c(0.5),
+                position = position_dodge(0.9)) + 
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    scale_color_manual(values = custom_colors("clusters")) + 
+    facet_wrap(~seurat_clusters, nrow = 1, scales = "free_x")
+
+grid.arrange(cd8_0, hu, nrow = 1)
+```
+
 Plot a bar chart of NRP-v7+ T cells per cluster
 ```{r plot NRP-v7 staining}
 p_tetramer_per_tissue <- seurat_integrated@meta.data %>%
