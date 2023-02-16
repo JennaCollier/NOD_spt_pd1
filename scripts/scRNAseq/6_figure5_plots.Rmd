@@ -152,7 +152,7 @@ p_pan8_shared <- pan8@meta.data %>%
                   guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                                 size = 5, 
                                                                 shape = 19))) +
-                  facet_wrap(~ treatment, ncol =3)
+                  facet_wrap(~ treatment, ncol =1)
 
 p_pan4_shared <- pan4@meta.data %>% 
                   filter(!is.na(pancreas_matching)) %>%
@@ -177,7 +177,7 @@ p_pan4_shared <- pan4@meta.data %>%
                   guides(color = guide_legend(override.aes = list(alpha = 1, 
                                                                 size = 5, 
                                                                 shape = 19))) +
-                  facet_wrap(~ treatment, ncol = 3)
+                  facet_wrap(~ treatment, ncol = 1)
 
 p_cd8_panonly_cluster <- pan8@meta.data %>% 
                             ggplot(aes(x = UMAP_1, 
@@ -243,7 +243,7 @@ p_cd4_panonly_cluster <- pan4@meta.data %>%
                             scale_color_manual(values = custom_colors("clusters"),
                                                limits = force) #drops unused clusters in legend
 
-grid.arrange(p_cd8_panonly_cluster, p_pan8_shared, p_cd4_panonly_cluster, p_pan4_shared, ncol = 2, widths = c(1,3))
+grid.arrange(p_cd8_panonly_cluster, p_cd4_panonly_cluster, p_pan8_shared, p_pan4_shared, ncol = 2, heights = c(1,3))
 
 #STACKED BAR PLOT OF SHARED/NON-SHARED
 p_shared_per_cluster <- seurat_integrated@meta.data %>% 
@@ -282,23 +282,28 @@ rbind(pan4@meta.data %>%
         mutate(celltype="CD8") %>% 
         cast(treatment+mouse_id+celltype ~ pancreas_matching, value = "n")) %>% 
         group_by(treatment, mouse_id, celltype) %>% 
-        summarize(ratio = PM/`non-PM`) %>% 
+        summarize(prcnt = 100*PM/(`non-PM`+PM)) %>% 
   ggplot(aes(x = treatment, 
              color = treatment, 
              fill = treatment, 
-             y = ratio)) + 
-    geom_violin(alpha=0.4, adjust = 0.8, scale = "width", draw_quantiles = 0.5) + 
-    geom_point(size=4) + 
+             y = prcnt)) + 
+    geom_violin(alpha = 0.4, 
+                adjust = 0.8, 
+                scale = "width", 
+                draw_quantiles = 0.5) + 
+    geom_point(size = 4) + 
     theme_minimal() +
     theme(panel.grid = element_blank(),
           panel.border = element_rect(color= "black", fill =NA, size=0.5),
+          panel.spacing = unit(0, "cm"),
           axis.title.x = element_blank(),
-          text = element_text(size=15)) +
+          text = element_text(size = 15)) +
     scale_color_manual(values = custom_colors("treatments")) +
     scale_fill_manual(values = custom_colors("treatments")) +
     facet_wrap(~ celltype, 
-               scales = "free_y") +
-    labs(y = "Ratio PM / non-PM",
+               scales = "free_y",
+               ncol = 1) +
+    labs(y = "Pancreas-matching (%)",
          title = "T cells in pancreas")
 ```
 
@@ -326,7 +331,7 @@ seurat_integrated@meta.data %>%
            celltype == "CD8") %>% 
   group_by(clonotype_id, treatment, tissue, seurat_clusters) %>% 
   tally() %>% 
-  ggplot(aes(x=tissue, fill = seurat_clusters, y = n)) + 
+  ggplot(aes(x=tissue, fill = seurat_clusters, y = n+1)) + 
   geom_bar(stat="identity", position = "stack") + 
   facet_wrap(treatment~clonotype_id) + 
   scale_fill_manual(values = custom_colors("clusters")) + 
@@ -458,6 +463,428 @@ merge(clonos_of_interest, seurat_integrated@meta.data %>%
                 label = num_cells), 
             color = "white")
 
+```
+
+```{r boxplot of gene expression}
+new_metadata <- data.frame(t(as.matrix(seurat_integrated@assays$RNA[c("Entpd1","Slamf6","Tcf7"),])))
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+expression_means_df <- seurat_integrated@meta.data %>% 
+                      filter(cd4_or_cd8 == "CD4") %>%
+                      group_by(mouse_id, seurat_clusters) %>%
+                      summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>%
+                      ungroup() %>%
+                      summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>%
+                      data.frame()
+expression_means <- expression_means_df[1,]
+names(expression_means_df) <- colnames(expression_means_df)
+
+#No dashed lines
+seurat_integrated@meta.data %>% 
+    filter(cd4_or_cd8 == "CD4" & tissue == "pancreas") %>%
+    group_by(mouse_id, seurat_clusters) %>%
+    summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>%
+    reshape2::melt(id.vars = c("mouse_id","seurat_clusters")) %>%
+    mutate(seurat_clusters = factor(seurat_clusters, levels = rev(levels(pan4$seurat_clusters)))) %>%
+    ggplot(aes(y = seurat_clusters, x = value, fill = seurat_clusters, color = seurat_clusters)) +
+    geom_boxplot(alpha = 0.5,
+                 outlier.shape = NA) + 
+    theme_minimal() + 
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    scale_color_manual(values = custom_colors("clusters")) +
+    labs(x = "Entpd1 expression", y = NULL) +
+    facet_wrap(~variable, scales = "free_x")
+
+#DASHED MEAN LINES
+p_entpd1 <- seurat_integrated@meta.data %>% 
+    filter(cd4_or_cd8 == "CD4" & tissue == "pancreas") %>%
+    group_by(mouse_id, seurat_clusters) %>%
+    summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>%
+    mutate(seurat_clusters = factor(seurat_clusters, levels = rev(levels(pan4$seurat_clusters)))) %>%
+    ggplot(aes(y = seurat_clusters, x = Entpd1, fill = seurat_clusters, color = seurat_clusters)) +
+    geom_boxplot(alpha = 0.5,
+                 outlier.shape = NA) + 
+    theme_minimal() + 
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    scale_color_manual(values = custom_colors("clusters")) +
+    labs(x = "Entpd1 expression", y = NULL) +
+    geom_vline(xintercept =  mean(seurat_integrated@meta.data %>% 
+                        filter(cd4_or_cd8 == "CD4" & tissue == "pancreas") %>%
+                        group_by(mouse_id, seurat_clusters) %>%
+                        summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>% 
+                          dplyr::select(Entpd1) %>% 
+                          pull()))
+p_slamf6 <- seurat_integrated@meta.data %>% 
+    filter(cd4_or_cd8 == "CD4" & tissue == "pancreas") %>%
+    group_by(mouse_id, seurat_clusters) %>%
+    summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>%
+    mutate(seurat_clusters = factor(seurat_clusters, levels = rev(levels(pan4$seurat_clusters)))) %>%
+    ggplot(aes(y = seurat_clusters, x = Slamf6, fill = seurat_clusters, color = seurat_clusters)) +
+    geom_boxplot(alpha = 0.5,
+                 outlier.shape = NA) + 
+    theme_minimal() + 
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    scale_color_manual(values = custom_colors("clusters")) +
+    labs(x = "Entpd1 expression", y = NULL) +
+    geom_vline(xintercept =  mean(seurat_integrated@meta.data %>% 
+                        filter(cd4_or_cd8 == "CD4" & tissue == "pancreas") %>%
+                        group_by(mouse_id, seurat_clusters) %>%
+                        summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>% 
+                          dplyr::select(Slamf6) %>% 
+                          pull()))
+p_tcf7 <- seurat_integrated@meta.data %>% 
+    filter(cd4_or_cd8 == "CD4" & tissue == "pancreas") %>%
+    group_by(mouse_id, seurat_clusters) %>%
+    summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>%
+    mutate(seurat_clusters = factor(seurat_clusters, levels = rev(levels(pan4$seurat_clusters)))) %>%
+    ggplot(aes(y = seurat_clusters, x = Tcf7, fill = seurat_clusters, color = seurat_clusters)) +
+    geom_boxplot(alpha = 0.5,
+                 outlier.shape = NA) + 
+    theme_minimal() + 
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("clusters")) + 
+    scale_color_manual(values = custom_colors("clusters")) +
+    labs(x = "Entpd1 expression", y = NULL) +
+    geom_vline(xintercept =  mean(seurat_integrated@meta.data %>% 
+                        filter(cd4_or_cd8 == "CD4" & tissue == "pancreas") %>%
+                        group_by(mouse_id, seurat_clusters) %>%
+                        summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6), Tcf7 = mean(Tcf7)) %>% 
+                          dplyr::select(Tcf7) %>% 
+                          pull()))
+
+grid.arrange(p_entpd1, p_slamf6, p_tcf7, ncol = 3) #plot the two genes together
+
+seurat_integrated@meta.data %>% 
+    filter(cd4_or_cd8 == "CD4") %>%
+    group_by(mouse_id, seurat_clusters) %>%
+    summarize(Entpd1 = mean(Entpd1), Slamf6 = mean(Slamf6)) %>%
+  reshape2::melt(id.vars = c("mouse_id","seurat_clusters")) %>%
+  group_by(variable) %>%
+    t_test(value ~ seurat_clusters)
+```
+
+``` {r violin of scRNA-seq pancreas-matching}
+cd8s <- seurat_integrated@meta.data %>% 
+    filter(tissue != "pancreas" & !is.na(pancreas_matching)) %>% 
+    dplyr::select(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching, clonotype_id) %>% 
+    unique() %>%
+    group_by(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching) %>% 
+    tally() %>% 
+    cast(treatment+mouse_id+tissue+cd4_or_cd8~pancreas_matching, value = "n") %>% 
+    group_by(treatment, cd4_or_cd8, mouse_id, tissue) %>% 
+    mutate(prcnt = 100*PM/sum(PM,`non-PM`)) %>% 
+    filter(cd4_or_cd8 == "CD8") %>%
+    ggplot(aes(x = treatment, 
+               y = prcnt,
+               fill = treatment,
+               color = treatment)) + 
+    geom_violin(alpha = 0.5, draw_quantiles = 0.5,
+                scale = "width",
+                adjust = 1) + 
+    geom_point(size = 2) + 
+    facet_wrap(~tissue) + 
+    theme_minimal() +
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          axis.ticks.y = element_line(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("treatments")) + 
+    scale_color_manual(values = custom_colors("treatments"))
+
+cd4s <- seurat_integrated@meta.data %>% 
+    filter(tissue != "pancreas" & !is.na(pancreas_matching)) %>% 
+    dplyr::select(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching, clonotype_id) %>% 
+    unique() %>%
+    group_by(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching) %>% 
+    tally() %>% 
+    cast(treatment+mouse_id+tissue+cd4_or_cd8~pancreas_matching, value = "n") %>% 
+    group_by(treatment, cd4_or_cd8, mouse_id, tissue) %>% 
+    mutate(prcnt = 100*PM/sum(PM,`non-PM`)) %>% 
+    filter(cd4_or_cd8 == "CD4") %>%
+    ggplot(aes(x = treatment, 
+               y = prcnt,
+               fill = treatment,
+               color = treatment)) + 
+    geom_violin(alpha = 0.5, draw_quantiles = 0.5,
+                scale = "width",
+                adjust = 1) + 
+    geom_point(size = 2) + 
+    facet_wrap(~tissue) + 
+    theme_minimal() +
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          axis.ticks.y = element_line(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("treatments")) + 
+    scale_color_manual(values = custom_colors("treatments"))
+
+cd8s_pan <- seurat_integrated@meta.data %>% 
+    filter(tissue == "pancreas" & !is.na(pancreas_matching)) %>% 
+    dplyr::select(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching, clonotype_id) %>% 
+    unique() %>%
+    group_by(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching) %>% 
+    tally() %>% 
+    cast(treatment+mouse_id+tissue+cd4_or_cd8~pancreas_matching, value = "n") %>% 
+    group_by(treatment, cd4_or_cd8, mouse_id, tissue) %>% 
+    mutate(prcnt = 100*PM/sum(PM,`non-PM`)) %>% 
+    filter(cd4_or_cd8 == "CD8") %>%
+    ggplot(aes(x = treatment, 
+               y = prcnt,
+               fill = treatment,
+               color = treatment)) + 
+    geom_violin(alpha = 0.5, draw_quantiles = 0.5,
+                scale = "width",
+                adjust = 1) + 
+    geom_point(size = 2) + 
+    facet_wrap(~tissue) + 
+    theme_minimal() +
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          axis.ticks.y = element_line(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("treatments")) + 
+    scale_color_manual(values = custom_colors("treatments"))
+
+cd4s_pan <- seurat_integrated@meta.data %>% 
+    filter(tissue == "pancreas" & !is.na(pancreas_matching)) %>% 
+    dplyr::select(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching, clonotype_id) %>% 
+    unique() %>%
+    group_by(treatment, tissue, cd4_or_cd8, mouse_id, pancreas_matching) %>% 
+    tally() %>% 
+    cast(treatment+mouse_id+tissue+cd4_or_cd8~pancreas_matching, value = "n") %>% 
+    group_by(treatment, cd4_or_cd8, mouse_id, tissue) %>% 
+    mutate(prcnt = 100*PM/sum(PM,`non-PM`)) %>% 
+    filter(cd4_or_cd8 == "CD4") %>%
+    ggplot(aes(x = treatment, 
+               y = prcnt,
+               fill = treatment,
+               color = treatment)) + 
+    geom_violin(alpha = 0.5, draw_quantiles = 0.5,
+                scale = "width",
+                adjust = 1) + 
+    geom_point(size = 2) + 
+    facet_wrap(~tissue) + 
+    theme_minimal() +
+    theme(panel.spacing = unit(0,"lines"),
+          axis.title.x = element_blank(),
+          panel.grid = element_blank(),
+          axis.ticks.y = element_line(),
+          legend.position = "none",
+          panel.border = element_rect(color = "black", 
+                                      size = 0.5, 
+                                      fill = NA)) +
+    scale_fill_manual(values = custom_colors("treatments")) + 
+    scale_color_manual(values = custom_colors("treatments"))
+
+grid.arrange(cd4s_pan,cd4s, cd8s_pan, cd8s, nrow=2, widths = c(1,2))
+
+```
+
+```{r boxplot of clone size PM and non-PM in blood and pLN}
+## BOXPLOT OF CLONE SIZE
+p_boxplot_pLN <- seurat_integrated@meta.data %>% 
+                  filter(!is.na(pancreas_matching) & tissue == "pLN" & celltype == "CD8") %>%
+                  group_by(treatment, clonotype_id, pancreas_matching) %>%
+                  tally() %>%
+                  ggplot() + 
+                  geom_boxplot(aes(x = treatment, 
+                                   y = log10(n), 
+                                   fill = treatment,
+                                   color = treatment),
+                               outlier.shape = NA, 
+                               alpha = 0.5) +
+                  geom_point(aes(x = treatment, 
+                                 y = log10(n), 
+                                 fill = treatment,
+                                 color = treatment),
+                             position = position_jitter(0.2),
+                             alpha = 0.1) +
+                  scale_fill_manual(values = custom_colors("treatments")) +
+                  scale_color_manual(values = custom_colors("treatments")) +
+                  theme_minimal() +
+                  #scale_y_continuous(limits = c(0, 2.9)) +
+                  theme(panel.grid = element_blank(),
+                        axis.title.x = element_blank(),
+                        legend.position = "none",
+                        text = element_text(size = 15),
+                        panel.spacing = unit(0, "cm"),
+                        panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+                  labs(y = expression(log[10](clone~size)),
+                       color = "Treatment",
+                       fill = "Treatment") +
+                  facet_wrap(~ pancreas_matching, scales = "free_y") +
+                  add_pvalue(data.frame(seurat_integrated@meta.data %>% 
+                                          filter(!is.na(pancreas_matching) & tissue == "pLN" & celltype == "CD8") %>%
+                                          group_by(treatment, clonotype_id, pancreas_matching) %>%
+                                          tally() %>% 
+                                          group_by(pancreas_matching) %>%
+                                          wilcox_test(n ~ treatment) %>% 
+                                          add_xy_position() %>%
+                                          mutate(y.position = log10(y.position + 1))),
+                             label = "p.adj.signif",
+                             step.increase = 0.05,
+                             tip.length = 0,
+                             label.size = 7) 
+
+p_boxplot_bld <- seurat_integrated@meta.data %>% 
+                  filter(!is.na(pancreas_matching) & tissue == "blood" & celltype == "CD8") %>%
+                  group_by(treatment, clonotype_id, pancreas_matching) %>%
+                  tally() %>%
+                  ggplot() + 
+                  geom_boxplot(aes(x = treatment, 
+                                   y = log10(n), 
+                                   fill = treatment,
+                                   color = treatment),
+                               outlier.shape = NA, 
+                               alpha = 0.5) +
+                  geom_point(aes(x = treatment, 
+                                 y = log10(n), 
+                                 fill = treatment,
+                                 color = treatment),
+                             position = position_jitter(0.2),
+                             alpha = 0.1) +
+                  scale_fill_manual(values = custom_colors("treatments")) +
+                  scale_color_manual(values = custom_colors("treatments")) +
+                  theme_minimal() +
+                  #scale_y_continuous(limits = c(0, 2.9)) +
+                  theme(panel.grid = element_blank(),
+                        axis.title.x = element_blank(),
+                        legend.position = "none",
+                        text = element_text(size = 15),
+                        panel.spacing = unit(0, "cm"),
+                        panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+                  labs(y = expression(log[10](clone~size)),
+                       color = "Treatment",
+                       fill = "Treatment") +
+                  facet_wrap(~ pancreas_matching, scales = "free_y") +
+                  add_pvalue(data.frame(seurat_integrated@meta.data %>% 
+                                          filter(!is.na(pancreas_matching) & tissue == "blood" & celltype == "CD8") %>%
+                                          group_by(treatment, clonotype_id, pancreas_matching) %>%
+                                          tally() %>% 
+                                          group_by(pancreas_matching) %>%
+                                          wilcox_test(n ~ treatment) %>% 
+                                          add_xy_position() %>%
+                                          mutate(y.position = log10(y.position + 1))),
+                             label = "p.adj.signif",
+                             step.increase = 0.05,
+                             tip.length = 0,
+                             label.size = 7) 
+
+#by mouse
+p_boxplot_bld_pm <- seurat_integrated@meta.data %>% 
+    filter(!is.na(pancreas_matching) & tissue == "pancreas" & clonotype_tissue_groups %in% c("blood&pancreas", "pancreas") ) %>%
+    group_by(treatment, mouse_id, pancreas_matching, cd4_or_cd8) %>%
+    tally() %>% cast(treatment+mouse_id+cd4_or_cd8 ~ pancreas_matching, value = "n") %>% 
+    mutate(prcnt = 100*PM/(PM+`non-PM`)) %>%
+                  ggplot() + 
+                  geom_violin(aes(x = treatment, 
+                                   y = prcnt, 
+                                   fill = treatment,
+                                   color = treatment),
+                               scale= "width", 
+                               alpha = 0.5,
+                              draw_quantiles = 0.5) +
+                  geom_point(aes(x = treatment, 
+                                 y = prcnt, 
+                                 fill = treatment,
+                                 color = treatment),
+                             size = 3) +
+                  scale_fill_manual(values = custom_colors("treatments")) +
+                  scale_color_manual(values = custom_colors("treatments")) +
+                  theme_minimal() +
+                  #scale_y_continuous(limits = c(0, 2.9)) +
+                  theme(panel.grid = element_blank(),
+                        axis.title.x = element_blank(),
+                        legend.position = "none",
+                        text = element_text(size = 15),
+                        panel.spacing = unit(0, "cm"),
+                        panel.border = element_rect(colour = "black", fill=NA, size=1)) +
+                  labs(y = "Blood PM T cells in pancreas (%)",
+                       color = "Treatment",
+                       fill = "Treatment") +
+  facet_wrap(~ cd4_or_cd8)
+
+## TOP 50 CLONOTYPES
+cumulative_sums <- seurat_integrated@meta.data %>% filter(!is.na(pancreas_matching) & tissue == "pLN" & celltype == "CD8" & pancreas_matching == "PM") %>% 
+    group_by(treatment, clonotype_id) %>% 
+    tally() %>% 
+    group_by(treatment) %>% 
+    mutate(prcnt = n*100/sum(n)) %>% 
+    group_by(treatment) %>% 
+    arrange(treatment, desc(prcnt)) %>% 
+    mutate(cs = cumsum(prcnt))
+
+cumulative_sums$clonotype_id <- factor(cumulative_sums$clonotype_id, 
+                                       levels = cumulative_sums$clonotype_id)
+
+p_top50_clonos <- cumulative_sums %>% 
+    group_by(treatment) %>% 
+    slice_head(n = 20) %>% 
+    ggplot(aes(x = clonotype_id, 
+               y = cs, 
+               color = treatment)) + 
+    geom_point() + 
+    geom_segment(aes(xend = clonotype_id, 
+                     yend = cs, 
+                     x = clonotype_id, 
+                     y = 0, 
+                     color = treatment)) + 
+    scale_color_manual(values = custom_colors("treatments")) +
+    scale_y_continuous(expand = c(0, 0)) +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          panel.spacing.x = unit(0, "lines"),
+          text = element_text(size = 15),
+          axis.text.x = element_blank(),
+          panel.border = element_rect(colour = "black", 
+                                      fill = NA, 
+                                      size = 1),
+          legend.position = "none") +
+    labs(x = "Top 50 clonotypes", 
+         y = "Cumulative % CD8 TCRs") +
+    facet_wrap(~ treatment, scales = "free_x")
+p_top50_clonos
+
+grid.arrange(p_boxplot_pLN, p_boxplot_bld, ncol = 1)
 ```
 
 ```{r stacked bar plots of terminally exhausted CD8+ T cells}
@@ -1284,6 +1711,246 @@ p_tcon_treg_shared_example_clonotypes <- seurat_integrated@meta.data %>%
                             geom_text(aes(x = U1, y = U2, label = num_cells), color = "white", size = 3, fontface = "bold")
 
 p_tcon_treg_shared_example_clonotypes
+```
+
+Show how the tetramer+ T cells differ between the treatment groups
+```{r andreas tetramer positive T cells}
+seurat_integrated@meta.data %>% 
+    filter(andreas_tetramer_specificity == "NRPv7" & celltype == "CD8") %>% 
+    group_by(treatment, seurat_clusters) %>% 
+    tally() %>% group_by(treatment) %>%     mutate(prcnt = n*100/sum(n),
+                                                             csum = rev(cumsum(rev(prcnt))),  #get the position for the labels
+                                                             pos = prcnt/2 + lead(csum, 1),
+                                                             pos = if_else(is.na(pos), prcnt/2, pos)) %>%
+    ggplot(aes(x = "", 
+               y = prcnt, 
+               fill = seurat_clusters)) + # pct used here so slices add to 100
+    geom_bar(stat="identity", width=1) +
+    coord_polar("y", start=0) +
+    #geom_text(aes(label = paste0(round(prcnt, 0), "%")), position = position_stack(vjust = 0.5)) +
+    facet_wrap(~treatment, ncol = 3) +
+    theme_void() +
+    theme(legend.position = "none",
+          text = element_text(size = 15)) +
+    geom_label_repel(aes(y = pos, label = paste0(round(prcnt, 0), "%")),
+                     size = 4.5, nudge_x = 0.5, show.legend = FALSE) +
+    scale_fill_manual(values = custom_colors("clusters"))
+
+seurat_integrated@meta.data %>% 
+  filter(andreas_tetramer_specificity == "NRPv7" & celltype == "CD8" & pancreas_matching == "PM") %>% 
+  group_by(clonotype_id, treatment, tissue, seurat_clusters) %>% 
+  tally() %>% 
+  ggplot(aes(x=tissue, fill = seurat_clusters, y = n+1)) + 
+  geom_bar(stat="identity", position = "stack") + 
+  facet_wrap(treatment~clonotype_id) + 
+  scale_fill_manual(values = custom_colors("clusters")) + 
+  theme_minimal() + 
+  scale_y_continuous(trans = "log10") +
+  theme(legend.position = "none", 
+        panel.grid = element_blank(), 
+        axis.text = element_blank(), 
+        axis.title = element_blank())
+```
+
+```{r pancreas matching across clusters}
+rbind(seurat_integrated@meta.data %>% 
+          filter(tissue == "blood" & !is.na(pancreas_matching) & celltype == "CD8") %>% 
+          group_by(seurat_clusters, 
+                   pancreas_matching, 
+                   mouse_id, 
+                   treatment) %>% 
+          tally() %>% 
+          group_by(mouse_id, 
+                   treatment) %>% 
+          mutate(prcnt = 100*n/sum(n)) %>% 
+          cast(seurat_clusters + mouse_id + treatment ~ pancreas_matching, 
+               value = "prcnt", 
+               fill = 0) %>% 
+          dplyr::select(seurat_clusters, treatment, PM),
+      data.frame(seurat_clusters = rep("CD8_effmem", 5), 
+                 treatment = c("IgG","Spt","PD1","PD1","PD1"), 
+                 PM = rep(0,5))) %>%
+    filter(seurat_clusters != "Acinar_contaminated") %>%
+    ggplot(aes(x = factor(seurat_clusters, levels = rev(levels(seurat_integrated$seurat_clusters))), 
+               y = PM, 
+               color = treatment, 
+               fill = treatment)) + 
+    theme_minimal() +
+    theme(legend.position = "none",
+          axis.ticks.y = element_line(),
+          panel.grid = element_blank(),
+          panel.spacing = unit(0, "cm"),
+          strip.text = element_blank(),
+          panel.border = element_rect(color = "black", fill = NA)) +
+    geom_violin(scale = "width", 
+                adjust = 0.8,
+                width = 0.6,
+                alpha = 0.2, 
+                draw_quantiles = c(0.5),
+                position = position_dodge(0.9)) + 
+    geom_point(position = position_dodge(0.9), size = 3) + 
+    scale_fill_manual(values = custom_colors("treatments")) + 
+    scale_color_manual(values = custom_colors("treatments")) + 
+    scale_y_continuous(expand = c(0,0), limits = c(0,30)) +
+    facet_wrap(~seurat_clusters, nrow = 1, scales = "free_x")
+```
+
+
+```{r show association between clusters}
+shared_clonotypes <- seurat_integrated@meta.data %>% 
+  filter(!is.na(clonotype_id)) %>%
+  group_by(cd4_or_cd8, clonotype_id, seurat_clusters) %>% 
+  tally() %>% 
+  summarize(clonotype_cluster_groups = paste(sort(seurat_clusters), collapse = "&")) %>% #be sure to sort the seurat_clusters terms before collapsing
+  arrange(desc(clonotype_cluster_groups)) %>% 
+  data.frame()
+
+shared_clonotypes <- setNames(as.character(shared_clonotypes$clonotype_cluster_groups), shared_clonotypes$clonotype_id)
+
+new_metadata <- seurat_integrated@meta.data %>% 
+  rownames_to_column('barcode') %>%
+  mutate(clonotype_cluster_groups = shared_clonotypes[clonotype_id]) %>%
+  column_to_rownames('barcode') %>%
+  dplyr::select(clonotype_cluster_groups) 
+
+seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+
+merge(seurat_integrated@meta.data %>% 
+        filter(cd4_or_cd8 == "CD8" & !is.na(clonotype_id) & grepl("Proliferating", clonotype_cluster_groups)) %>% 
+        dplyr::select(clonotype_id, seurat_clusters) %>% unique() %>% 
+        group_by(seurat_clusters) %>% 
+        tally() %>% 
+        mutate(prcnt = round(100*n/sum(n))), 
+      seurat_integrated@meta.data %>% 
+        group_by(seurat_clusters) %>% 
+        summarize(U1 = mean(allcells_UMAP_1),
+                  U2 = mean(allcells_UMAP_2)), 
+      by = "seurat_clusters") %>%
+  ggplot() +
+  geom_point(data = seurat_integrated@meta.data,
+             aes(x = allcells_UMAP_1, 
+                 y = allcells_UMAP_2),
+             shape = 16,
+             color = "grey90") +
+  geom_point(aes(x = U1,
+                 y = U2,
+                 size = prcnt,
+                 color = seurat_clusters),
+             shape = 16) +
+  theme_minimal() +
+  theme(axis.title = element_blank(),
+        axis.text = element_blank(),
+        panel.grid = element_blank(),
+        text = element_text(size = 15),
+        legend.position = "none") +
+  labs(color = NULL) +
+  scale_color_manual(values = custom_colors("clusters")) +
+  scale_size_continuous(range = c(3,10)) +
+  guides(color = guide_legend(override.aes = list(alpha = 1, 
+                                                  size = 5, 
+                                                  shape = 19))) +
+  geom_text(aes(x = U1, 
+                y = U2, 
+                label = prcnt), 
+            color = "white", 
+            size = 3, 
+            fontface = "bold")
+
+df <- list()
+for (current_treatment in c("IgG", "Spt", "PD1")) {
+  df[[current_treatment]] <- data.frame(matrix(NA, ncol = length(levels(factor(pan8$seurat_clusters))), nrow = length(levels(factor(pan8$seurat_clusters)))))
+  colnames(df[[current_treatment]]) <- levels(factor(pan8$seurat_clusters))
+  rownames(df[[current_treatment]]) <- levels(factor(pan8$seurat_clusters))
+  for (i in 1:(length(levels(factor(pan8$seurat_clusters)))-1)) {
+    for (j in (i+1):length(levels(factor(pan8$seurat_clusters))))
+      df[[current_treatment]][i,j] <- seurat_integrated@meta.data %>% 
+      filter(cd4_or_cd8 == "CD8" & treatment == current_treatment & !is.na(clonotype_id) & grepl(levels(factor(pan8$seurat_clusters))[i], clonotype_cluster_groups) & grepl(levels(factor(pan8$seurat_clusters))[j], clonotype_cluster_groups)) %>% 
+        dplyr::select(clonotype_id) %>% 
+        unique() %>% 
+        count() %>% 
+        pull(n)
+  }
+  df[[current_treatment]] <- df[[current_treatment]] %>% 
+    rownames_to_column("seurat_clusters") %>%
+    mutate(treatment = current_treatment) %>% 
+    reshape2::melt(id.vars = c("seurat_clusters", "treatment"), na.rm = T)
+}
+
+merged_df <- rbind(df[["IgG"]], df[["Spt"]], df[["PD1"]]) %>% group_by(treatment) %>% mutate(prcnt = 100*value/sum(value))
+merged_df$seurat_clusters <- factor(merged_df$seurat_clusters, levels =levels(factor(pan8$seurat_clusters)))
+merged_df$variable <- factor(merged_df$variable, levels = rev(levels(factor(pan8$seurat_clusters))))
+merged_df$treatment <- factor(merged_df$treatment, levels = c("IgG", "Spt", "PD1"))
+
+merged_df %>% 
+    ggplot(aes(x = seurat_clusters, y = variable, fill = prcnt)) + 
+    geom_tile() +
+  geom_text(aes(label = value)) +
+    facet_wrap(~ treatment) +
+    theme_minimal() + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),
+          axis.title = element_blank()) +
+    scale_fill_gradient2(low = "white", mid = "blue", high = "red", midpoint = 4, limits = c(0,8)) +
+  scale_x_discrete(expand = c(0,0)) +
+  scale_y_discrete(expand = c(0,0))
+
+merged_df$group <- paste0("_", merged_df$seurat_clusters,"_&_", merged_df$variable, "_") #ensures CD8_eff doesn't match to both CD8_eff and CD8_effmem
+
+#loop through treatments and clusters to build list of contingency tables - NEED TO FIX
+res <- data.frame()
+for (current_treatment in c("IgG", "Spt", "PD1")) {
+  for (i in 1:(length(levels(factor(pan8$seurat_clusters)))-1)) {
+    for (j in (i+1):length(levels(factor(pan8$seurat_clusters)))) {
+      contingency_tbl <- data.frame(cluster = c(merged_df %>% 
+                                                   filter(treatment == current_treatment & 
+                                                            grepl(paste0("_", levels(factor(pan8$seurat_clusters))[i], "_"), group) & 
+                                                            grepl(paste0("_", levels(factor(pan8$seurat_clusters))[j], "_"), group)) %>% 
+                                                   summarize(total = sum(value)) %>% 
+                                                   pull(total), 
+                                                 merged_df %>% 
+                                                   filter(treatment == current_treatment & 
+                                                            grepl(paste0("_", levels(factor(pan8$seurat_clusters))[i], "_"), group) & 
+                                                            !grepl(paste0("_", levels(factor(pan8$seurat_clusters))[j], "_"), group)) %>% 
+                                                   summarize(total = sum(value)) %>% 
+                                                   pull(total)),
+                                     
+                                     not_cluster = c(merged_df %>% 
+                                                       filter(treatment == current_treatment & 
+                                                                !grepl(paste0("_", levels(factor(pan8$seurat_clusters))[i], "_"), group) & 
+                                                                grepl(paste0("_", levels(factor(pan8$seurat_clusters))[j], "_"), group)) %>% 
+                                                       summarize(total = sum(value)) %>% 
+                                                       pull(total), 
+                                                     merged_df %>% 
+                                                       filter(treatment == current_treatment & 
+                                                                !grepl(paste0("_", levels(factor(pan8$seurat_clusters))[i], "_"), group) & 
+                                                                !grepl(paste0("_", levels(factor(pan8$seurat_clusters))[j], "_"), group)) %>% 
+                                                       summarize(total = sum(value)) %>% 
+                                                       pull(total)),
+                                     
+                                     row.names = c("shared","not_shared"))
+      res <- rbind(res, 
+                   data.frame(treatment = current_treatment, 
+                              seurat_clusters = levels(factor(pan8$seurat_clusters))[i], 
+                              variable = levels(factor(pan8$seurat_clusters))[j],
+                              fisher.p.value = fisher.test(contingency_tbl, alternative = "greater")$p.value))
+    }
+  }
+}
+
+res$fisher.p.value <- p.adjust(res$fisher.p.value, method = "BH")
+
+res <- merge(merged_df, res, by = c("treatment", "seurat_clusters", "variable"))
+
+res %>% 
+    ggplot(aes(x = seurat_clusters, y = variable, fill = prcnt)) + 
+    geom_tile() +
+    geom_tile(data = res %>% filter(fisher.p.value < 0.05), fill = NA, color = "black", size = 1) +
+    geom_text(aes(label = value), color = "black", size = 5) +
+    facet_wrap(~ treatment) +
+    theme_minimal() + 
+    theme(axis.text.x = element_text(angle = 90, hjust = 1),
+          axis.title = element_blank()) +
+    scale_fill_gradient2(low = "white", mid = "blue", high = "red", midpoint = 4, limits = c(0,8))
+
 ```
 
 Fisher's exact test with plot to look at sharing between clusters. Number of unique clonotypes in box and p values as color.

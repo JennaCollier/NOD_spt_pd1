@@ -1,0 +1,130 @@
+---
+title: "7_figure6_plots"
+output: rmarkdown::github_document
+date: '2022-07-10'
+---
+
+
+This code documents the initialization of the Seurat objects for patient colitis.
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+```
+
+```{r libraries, message = FALSE, warning = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(Seurat, quietly = T) #scRNA-seq analysis
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(rstatix, quietly = T) #adding p values to plots
+require(ggprism, quietly = T) #adding p values to plots
+require(ggsci, quietly = T) #IGV color palette
+require(patchwork, quietly = T) #adding p values to plots
+require(magrittr, quietly = T) #adding p values to plots
+require(gridExtra, quietly = T) #display multiple plots
+require(ggrepel, quietly = T) #labels for plots
+require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
+require(viridis, quietly = T) #viridis color palettes
+require(readxl, quietly = T) #reading Excel files
+require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
+source("scripts/utils.R") #custom color palettes and other functions
+set.seed(1) #set a seed for reproducibility
+```
+
+## Initialize Seurat object
+
+Matrices, genes, barcodes, filtered TCR contig annotations, and consensus TCR annotations for each sample are within the data/ directory named as **GSE180045**. Initiate the Seurat object by reading in each individual output from cellranger multi using a loop and subsequent merge. Loop through each sample in samples 1) storing Gene Expression (GEX) and feature-barcoding (FB) data; 2) creating list of seurat objects with GEX and FB assay data under the list name of each sample; 3) sample meta data (tissue: pancreas [pan], pancreatic lymph node [pLN], blood [bld] and antibody treatment [isotype: IgG or anti-PD-1: PD1] or spontaneously diabetic mice [Spt]).
+```{r PBMC seurat initialization}
+pbmc <- readRDS("objects/pbmc/1M_T1D_pbmc.rds")
+pbmc <- subset(pbmc, idents = c(12,14), invert = T)
+pbmc@meta.data <- pbmc@meta.data[,c("percent.mt", "sample")] #remove all unecessary metadata which increases the object size substantially
+new_metadata <- pbmc@meta.data %>% 
+                  mutate(pathology = ifelse(lapply(sample, function(x) strsplit(x, "_")[[1]][1]) == "H", "healthy", "T1D")) %>% 
+                  dplyr::select(pathology)
+pbmc <- AddMetaData(pbmc, new_metadata)
+
+#cluster the data 
+pbmc <- ScaleData(pbmc, verbose = FALSE) #scale the RNA data
+pbmc <- RunPCA(pbmc, npcs = 30, verbose = FALSE, features = rownames(x = pbmc)) #run PCA
+pbmc <- RunUMAP(pbmc, reduction = "pca", dims = 1:30)
+pbmc <- FindNeighbors(pbmc, reduction = "pca", dims = 1:30)
+pbmc <- FindClusters(pbmc, resolution = 0.3)
+p_cluster <- DimPlot(seurat_object, reduction = "umap", label = TRUE, label.size = 5) + theme(legend.position = "none")
+p_markers <- FeaturePlot(seurat_object, "CD3E")
+p_cluster + p_markers
+
+seurat_markers <- FindAllMarkers(pbmc, min.pct = 0.25, only.pos = T, logfc.threshold = 0.25, max.cells.per.ident = 500) %>%
+                     group_by(cluster) %>%
+                     filter(p_val_adj < 0.05) %>%
+                     group_by(cluster) %>%
+                     arrange(desc(avg_log2FC), .by_group = T) %>%
+                     top_n(n = 50, wt = avg_log2FC)
+
+# tcells <- c(WhichCells(pbmc, idents = c(2,5,7,8,10,11,15)), WhichCells(pbmc, expression = CD3E > 0))
+# seurat_object <- subset(seurat_object, cells = tcells)
+# 
+# seurat_object <- ScaleData(seurat_object, verbose = FALSE) #scale the RNA data
+# seurat_object <- RunPCA(seurat_object, npcs = 30, verbose = FALSE, features = rownames(x = seurat_object)) #run PCA
+# seurat_object <- RunUMAP(seurat_object, reduction = "pca", dims = 1:30)
+# seurat_object <- FindNeighbors(seurat_object, reduction = "pca", dims = 1:30)
+# seurat_object <- FindClusters(seurat_object, resolution = 0.2)
+# p_cluster <- DimPlot(seurat_object, reduction = "umap", label = TRUE, label.size = 5) + theme(legend.position = "none")
+# p_markers <- FeaturePlot(seurat_object, "CD8A", max.cutoff = 10)
+# p_cluster + p_markers
+# 
+# saveRDS(seurat_object, "objects/pbmc/seurat_pbmc.rds")
+```
+Next, subset the CD8 T cells based on CD8A expression and certain clusters.
+```{r subset CD8 T cells}
+pbmc <- subset(seurat_object, cells = WhichCells(seurat_object, expression = CD8A > 0 & CD3E > 0 & CD44 > 0))
+pbmc <- ScaleData(pbmc, verbose = FALSE) #scale the RNA data
+pbmc <- RunPCA(pbmc, npcs = 30, verbose = FALSE, features = rownames(x = pbmc)) #run PCA
+pbmc <- RunUMAP(pbmc, reduction = "pca", dims = 1:30)
+pbmc <- FindNeighbors(pbmc, reduction = "pca", dims = 1:30)
+pbmc <- FindClusters(pbmc, resolution = 0.2)
+p_cluster <- DimPlot(pbmc, reduction = "umap", label = TRUE, label.size = 5) + theme(legend.position = "none")
+p_markers <- DimPlot(pbmc, group.by = "adverse_event")
+p_cluster + p_markers
+
+seurat_markers <- FindAllMarkers(pbmc, min.pct = 0.25, only.pos = T, logfc.threshold = 0.25) %>%
+                     group_by(cluster) %>%
+                     filter(p_val_adj < 0.05) %>%
+                     group_by(cluster) %>%
+                     arrange(desc(avg_log2FC), .by_group = T) %>%
+                     top_n(n = 50, wt = avg_log2FC)
+
+```
+
+
+```{r project gene signature onto PBMC}
+Idents(seurat_integrated) <- seurat_integrated$tissue
+seurat_bld <- subset(seurat_integrated, idents = "blood") #subset on T cells in blood
+Idents(seurat_bld) <- seurat_bld$celltype
+seurat_bld <- subset(seurat_bld, idents = "CD8") #subset on T cells in blood
+Idents(seurat_bld) <- seurat_bld$treatment
+
+#get PD1_PM and find markers against all else in blood
+# new_metadata <- seurat_bld@meta.data %>% 
+#                   mutate(pd1_pm_signature = case_when(treatment == "PD1" & pancreas_matching == "PM" ~ "PD1_PM",
+#                                                        treatment != "PD1" & pancreas_matching %in% c("PM","non-PM") ~ "non_PD1_PM",
+#                                                        TRUE ~ NA_character_)) %>% 
+#                   dplyr::select(pd1_pm_signature)
+
+#seurat_bld <- AddMetaData(seurat_bld, new_metadata)
+markers <- FindMarkers(seurat_bld, 
+                       ident.1 = "PM", 
+                       ident.2 = "non-PM", 
+                       group.by = "pancreas_matching",
+                       subset.ident = "PD1") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
+
+pm_signature <- convertMouseGeneList(markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+
+#luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(pm_signature), name = "pm_signature")
+#corri <- AddModuleScore(corri, features = list(pm_signature), name = "pm_signature")
+#boland_cd8 <- AddModuleScore(boland_cd8, features = list(pm_signature), name = "pm_signature")
+```
+

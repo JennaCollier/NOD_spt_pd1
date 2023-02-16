@@ -76,7 +76,8 @@ convertHumanGeneList <- function(x){
   require("biomaRt")
   human = useMart(biomart="ensembl", dataset = "hsapiens_gene_ensembl", verbose = TRUE, host = "https://dec2021.archive.ensembl.org")
   mouse = useMart(biomart="ensembl", dataset = "mmusculus_gene_ensembl", verbose = TRUE, host = "https://dec2021.archive.ensembl.org")
-  genesV2 = getLDS(attributes = c("hgnc_symbol"), filters = "hgnc_symbol", values = x, mart = human, attributesL = c("mgi_symbol"), martL = mouse, uniqueRows=T)
+  genesV2 = getLDS(attributes = c("hgnc_symbol"), filters = "hgnc_symbol", values = x, mart = human, attributesL = c("mgi_symbol"), martL = mouse, uniqueRows=T) %>% 
+    filter(!duplicated(MGI.symbol)) #if one gene maps to multiple, take the first one only
   humanx <- unique(genesV2[, 2])
   # Print the first 6 genes found to the screen
   print(head(humanx))
@@ -88,8 +89,9 @@ convertMouseGeneList <- function(x){
   require("biomaRt")
   human = useMart(biomart="ensembl", dataset = "hsapiens_gene_ensembl", verbose = TRUE, host = "https://dec2021.archive.ensembl.org")
   mouse = useMart(biomart="ensembl", dataset = "mmusculus_gene_ensembl", verbose = TRUE, host = "https://dec2021.archive.ensembl.org")
-  genesV2 = getLDS(attributes = c("mgi_symbol"), filters = "mgi_symbol", values = x, mart = mouse, attributesL = c("hgnc_symbol"), martL = human, uniqueRows=T)
-  mousex <- unique(genesV2[, 2])
+  genesV2 = getLDS(attributes = c("mgi_symbol"), filters = "mgi_symbol", values = x, mart = mouse, attributesL = c("hgnc_symbol"), martL = human, uniqueRows=T) %>% 
+    filter(!duplicated(MGI.symbol)) #if one gene maps to multiple, take the first one only
+  mousex <- unique(genesV2[, 2]) 
   # Print the first 6 genes found to the screen
   print(head(mousex))
   return(mousex)

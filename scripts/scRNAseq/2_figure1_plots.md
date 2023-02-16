@@ -1,19 +1,17 @@
----
-title: "2_figure1_plots"
-output: rmarkdown::github_document
-date: '2022-07-10'
----
-
-```{r setup, include=FALSE, echo=FALSE}
-knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
-knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
-```
-
+2_figure1_plots
+================
+2022-07-10
 
 ## Overview
-Figure 1: Single cell transcriptional landscape of CD4+ and CD8+ T cells during spontaneous and anti-PD-1-induced T1D in NOD mice. The purpose of this figure is to show the single cell transcriptional landscape of CD4+ and CD8+ T cells during spontaneous and anti-PD-1-induced T1D in NOD mice across the tissues examined: pancreatic lymph node (pLN), pancreas, and blood.
 
-```{r libraries, message = FALSE, warning = FALSE}
+Figure 1: Single cell transcriptional landscape of CD4+ and CD8+ T cells
+during spontaneous and anti-PD-1-induced T1D in NOD mice. The purpose of
+this figure is to show the single cell transcriptional landscape of CD4+
+and CD8+ T cells during spontaneous and anti-PD-1-induced T1D in NOD
+mice across the tissues examined: pancreatic lymph node (pLN), pancreas,
+and blood.
+
+``` r
 require(dplyr, quietly = T) #simple manipulation of data.frames
 require(Seurat, quietly = T) #scRNA-seq analysis
 require(reshape, quietly = T) #melting and casting data.frames
@@ -34,15 +32,20 @@ source("scripts/utils.R") #custom color palettes and other functions
 set.seed(1) #set a seed for reproducibility
 ```
 
-Read in the integrated seurat object containing CD4+ and CD8+ T cells from all tissues:
-```{r Read in data}
+Read in the integrated seurat object containing CD4+ and CD8+ T cells
+from all tissues:
+
+``` r
 seurat_integrated <- readRDS("objects/seurat_integrated_clustered.rds")
 pan8 <- readRDS("objects/seurat_cd8_panonly_clustered.rds")
 pan4 <- readRDS("objects/seurat_cd4_panonly_clustered.rds")
 ```
 
-We examined the incidence of acinar inflammation in the three treatment groups. Here we perform a Fisher's Exact test for differences in acinar inflammation by creating three contingency tables:
-```{r}
+We examined the incidence of acinar inflammation in the three treatment
+groups. Here we perform a Fisher’s Exact test for differences in acinar
+inflammation by creating three contingency tables:
+
+``` r
 igg <- data.frame(acinar = c(1,6), not_acinar = c(19,39))
 rownames(igg) <- c("IgG","not_IgG")
 
@@ -55,11 +58,30 @@ rownames(pd1) <- c("PD1","not_PD1")
 res <- data.frame(treatment = c("IgG", "Spt", "PD1"), 
             fisher.p.value = p.adjust(c(fisher.test(igg)$p.value, fisher.test(spt)$p.value, fisher.test(pd1)$p.value)),
             chisq.p.value = p.adjust(c(chisq.test(igg)$p.value, chisq.test(spt)$p.value, chisq.test(pd1)$p.value)))
+```
+
+    ## Warning in chisq.test(igg): Chi-squared approximation may be incorrect
+
+    ## Warning in chisq.test(spt): Chi-squared approximation may be incorrect
+
+    ## Warning in chisq.test(pd1): Chi-squared approximation may be incorrect
+
+``` r
 res
 ```
 
-All of the T cells (both CD4 and CD8) will be clustered on a single UMAP. Additional UMAPs showing distribution of tissues, treatment groups, cell types, and clonotype expansion are also plotted to show the distribution of the samples. To label the initial UMAP with the Seurat clusters, the centroids of each cluster must be measured.
-```{r Improved cluster UMAP}
+    ##   treatment fisher.p.value chisq.p.value
+    ## 1       IgG     0.42258839     0.5708221
+    ## 2       Spt     0.17969304     0.3032732
+    ## 3       PD1     0.03259754     0.0628019
+
+All of the T cells (both CD4 and CD8) will be clustered on a single
+UMAP. Additional UMAPs showing distribution of tissues, treatment
+groups, cell types, and clonotype expansion are also plotted to show the
+distribution of the samples. To label the initial UMAP with the Seurat
+clusters, the centroids of each cluster must be measured.
+
+``` r
 #define the centroids of each cluster for labeling
 integrated_cls <- seurat_integrated@meta.data %>% 
                     dplyr::select(allcells_UMAP_1, 
@@ -70,7 +92,31 @@ integrated_cls <- seurat_integrated@meta.data %>%
                               U2 = mean(allcells_UMAP_2)) %>% 
                     data.frame()
 integrated_cls
+```
 
+    ##        seurat_clusters        U1         U2
+    ## 1               CD8_cm -1.712744  4.8496332
+    ## 2              CD8_mem -3.776977  2.5400027
+    ## 3           CD8_effmem -3.636370  1.1572626
+    ## 4             CD8_slec -7.657589 -0.5356249
+    ## 5              CD8_eff -5.382211  1.1655254
+    ## 6             CD8_pexh -5.144333  1.6715835
+    ## 7             CD8_texh -5.275911 -0.3912251
+    ## 8              Tcon_cm  3.596482  2.8960248
+    ## 9             Tcon_mem  1.679384  1.1377887
+    ## 10         Tcon_effmem -1.034969  0.8894641
+    ## 11            Tcon_eff -1.670464 -0.8911204
+    ## 12           Tcon_prog  1.004587 -1.2863303
+    ## 13           Tcon_Th21  2.554923 -1.7345814
+    ## 14            Tcon_Tfh  1.605868 -2.7830132
+    ## 15        Treg_resting  4.592014 -2.2855875
+    ## 16            Treg_eff  1.732288 -4.2231346
+    ## 17 Acinar_contaminated -1.247957  0.5114292
+    ## 18  Recently_activated  4.733982 -0.9761269
+    ## 19  Interferon_sensing -2.486465 -2.4838935
+    ## 20       Proliferating -3.620606 -3.9032418
+
+``` r
 #plot the UMAP from the integrated Seurat containing the cluster labels
 p_allcells_cluster <- seurat_integrated@meta.data %>% 
                         ggplot(aes(x = allcells_UMAP_1, 
@@ -277,291 +323,12 @@ p_tox <- seurat_integrated@meta.data %>%
 grid.arrange(p_celltypes, p_tox, p_coinh, p_term, p_expansion, p_tissues, p_treatment,   ncol = 2)
 ```
 
-It is visually appealing in presentations to present one tissue or celltype at a time to draw attention by the viewer. Here is the plot for individual celltypes:
-```{r plot single celltypes on UMAP}
-seurat_integrated@meta.data %>% filter(celltype == "Treg") %>% mutate(Treg = "Treg") %>% dplyr::select(Treg) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+![](2_figure1_plots_files/figure-gfm/Improved%20cluster%20UMAP-1.png)<!-- -->
 
-seurat_integrated@meta.data %>% filter(celltype == "Tcon") %>% mutate(Tcon = "Tcon") %>% dplyr::select(Tcon) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
+Plot the UMAP visualization of some critical markers of T cells used to
+identify cell subsets (CD4, CD8a, FoxP3):
 
-seurat_integrated@meta.data %>% filter(celltype == "CD8") %>% mutate(CD8 = "CD8") %>% dplyr::select(CD8) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-p_cd8 <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = CD8)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("celltypes"))
-
-p_tcon <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = Tcon)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("celltypes"))
-
-p_treg <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = Treg)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("celltypes"))
-
-grid.arrange(p_cd8, p_tcon, p_treg, nrow = 1)
-```
-
-Next, plot the clusters within each cell type:
-```{r plot clusters within each celltypes on UMAP}
-seurat_integrated@meta.data %>% filter(celltype == "Treg") %>% mutate(Treg = seurat_clusters) %>% dplyr::select(Treg) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-seurat_integrated@meta.data %>% filter(celltype == "Tcon") %>% mutate(Tcon = seurat_clusters) %>% dplyr::select(Tcon) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-seurat_integrated@meta.data %>% filter(celltype == "CD8") %>% mutate(CD8 = seurat_clusters) %>% dplyr::select(CD8) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-p_cd8 <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = CD8)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("clusters"))
-
-p_tcon <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = Tcon)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("clusters"))
-
-p_treg <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = Treg)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("clusters"))
-
-grid.arrange(p_cd8, p_tcon, p_treg, nrow = 1)
-```
-
-Plot individual tissues:
-```{r plot single tissues on UMAP}
-seurat_integrated@meta.data %>% filter(tissue == "pLN") %>% mutate(pLN = "pLN") %>% dplyr::select(pLN) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-seurat_integrated@meta.data %>% filter(tissue == "blood") %>% mutate(blood = "blood") %>% dplyr::select(blood) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-seurat_integrated@meta.data %>% filter(tissue == "pancreas") %>% mutate(pancreas = "pancreas") %>% dplyr::select(pancreas) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-p_pancreas <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = pancreas)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("treatments"))
-
-p_blood <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = blood)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("treatments"))
-
-p_pLN <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = pLN)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("treatments"))
-
-grid.arrange(p_pancreas, p_blood, p_pLN, nrow = 1)
-```
-
-```{r plot single treatments on UMAP}
-seurat_integrated@meta.data %>% filter(treatment == "IgG") %>% mutate(IgG = "IgG") %>% dplyr::select(IgG) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-seurat_integrated@meta.data %>% filter(treatment == "Spt") %>% mutate(Spt = "Spt") %>% dplyr::select(Spt) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-seurat_integrated@meta.data %>% filter(treatment == "PD1") %>% mutate(PD1 = "PD1") %>% dplyr::select(PD1) -> new_metadata
-seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
-
-p_PD1 <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = PD1)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("treatments"))
-
-p_Spt <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = Spt)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("treatments"))
-
-p_IgG <- seurat_integrated@meta.data %>% 
-    ggplot(aes(x = allcells_UMAP_1, 
-               y = allcells_UMAP_2, 
-               color = IgG)) + 
-    geom_point(shape = 16, 
-               alpha = 0.3) +
-    theme_minimal() +
-    theme(axis.title = element_blank(),
-          legend.position = "none",
-          axis.text = element_blank(),
-          text = element_text(size = 15),
-          panel.grid = element_blank()) +
-    labs(color= NULL,
-         title = NULL) +
-    guides(color = guide_legend(override.aes = list(alpha = 1, #custom legend key
-                                                    size = 5, 
-                                                    shape = 19))) + 
-    scale_color_manual(values = custom_colors("treatments"))
-
-grid.arrange(p_PD1, p_Spt, p_IgG, nrow = 1)
-```
-
-Plot the UMAP visualization of some critical markers of T cells used to identify cell subsets (CD4, CD8a, FoxP3):
-```{r UMAP of markers}
+``` r
 data.frame(t(as.matrix(seurat_integrated@assays$RNA[c("Cd4","Cd8a","Foxp3"),]))) -> new_metadata
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)
 
@@ -623,8 +390,12 @@ p_foxp3 <- seurat_integrated@meta.data %>%
 grid.arrange(p_cd4, p_cd8a, p_foxp3, ncol = 3)
 ```
 
-Next, create a stacked bar chart showing the distribution of tissues in each Seurat cluster:
-```{r stacked bar chart of tissues and cell type per seurat cluster}
+![](2_figure1_plots_files/figure-gfm/UMAP%20of%20markers-1.png)<!-- -->
+
+Next, create a stacked bar chart showing the distribution of tissues in
+each Seurat cluster:
+
+``` r
 p_tissue_per_seurat_cluster <- seurat_integrated@meta.data %>% 
                                 ggplot(aes(x = factor(seurat_clusters, 
                                                     levels = rev(levels(seurat_integrated$seurat_clusters))), #orders clusters properly
@@ -688,8 +459,11 @@ p_treatment_per_seurat_cluster <- seurat_integrated@meta.data %>%
 grid.arrange(p_tissue_per_seurat_cluster, p_celltype_per_seurat_cluster, p_treatment_per_seurat_cluster, nrow = 3)
 ```
 
+![](2_figure1_plots_files/figure-gfm/stacked%20bar%20chart%20of%20tissues%20and%20cell%20type%20per%20seurat%20cluster-1.png)<!-- -->
+
 Plot a bar chart of NRP-v7+ T cells per cluster
-```{r plot NRP-v7 staining}
+
+``` r
 p_tetramer_per_cluster <- seurat_integrated@meta.data %>%
                             filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
                             mutate(tetramer_tissue = case_when(tetramer_specificity == "NRPv7" & tissue == "pancreas" ~ "pancreas NRPv7",
@@ -714,7 +488,11 @@ p_tetramer_per_cluster <- seurat_integrated@meta.data %>%
                             scale_fill_manual(values = c("unknown" = "grey90", "pancreas NRPv7" = "Firebrick", "periphery NRPv7" = "hotpink")) +
                             coord_flip()
 p_tetramer_per_cluster
+```
 
+![](2_figure1_plots_files/figure-gfm/plot%20NRP-v7%20staining-1.png)<!-- -->
+
+``` r
 ## TOP 50 CLONOTYPES
 ## needs to be fixe to factor each group separately
 cumulative_sums <- pan8@meta.data %>% filter(!is.na(clonotype_id)) %>% 
@@ -759,8 +537,17 @@ p_top50_clonos <- cumulative_sums %>%
 p_top50_clonos
 ```
 
-To plot a heatmap of genes of interest across the clusters in Morpheus, the following manually annotated list of genes of interest, **goi**, will be examined. The average expression for each cluster will be determined and this data will be used to plot in Morpheus (Broad institute). The average expression for every gene will be determined to plot the pearson correlations for the Seurat clusters across tissues as well. 
-```{r heatmap data for Morpheus}
+![](2_figure1_plots_files/figure-gfm/plot%20NRP-v7%20staining-2.png)<!-- -->
+
+To plot a heatmap of genes of interest across the clusters in Morpheus,
+the following manually annotated list of genes of interest, **goi**,
+will be examined. The average expression for each cluster will be
+determined and this data will be used to plot in Morpheus (Broad
+institute). The average expression for every gene will be determined to
+plot the pearson correlations for the Seurat clusters across tissues as
+well.
+
+``` r
 ## average gene expression of each tissue for each cluster/tissue - for Pearson correlation
 avgs <- as.data.frame(t(AverageExpression(seurat_integrated, 
                                           assay = "RNA", 
@@ -809,4 +596,3 @@ avgs <- merge(gene_annot, avgs, by = "gene")
 
 #write.table(top20_genes, "output/integrated_seurat_FindAllMarkers_top20.tsv", quote = F, sep = "\t", row.names = F)
 ```
-

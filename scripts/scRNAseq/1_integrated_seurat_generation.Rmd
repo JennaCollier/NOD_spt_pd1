@@ -769,7 +769,7 @@ gene_signatures <- c("SLEC1",
 ```
 
 Add the NRP-v7 tetramer staining to the Seurat meta data for ease of plotting. An NRP-v7+ T cell was identified if: 1) The cell was classified as a CD8 T cell; 2) The cell had an associated TCR; 3) the cell had a NRP-7 tetramer TotalSeqC staining value of over 1.5. NRP-v7+ T cells were sorted by the Scheitinger lab for scRNA-seq: these TCRs will be examined to determine the overlap with the tetramer+ T cells identified in this experiment.
-```{r }
+```{r NRPv7 tetramer staining}
 new_metadata <- as.data.frame(t(data.frame(seurat_integrated@assays$FB@data)))
 colnames(new_metadata) <- "NRPv7_TotalSeqC"
 seurat_integrated <- AddMetaData(seurat_integrated, new_metadata)

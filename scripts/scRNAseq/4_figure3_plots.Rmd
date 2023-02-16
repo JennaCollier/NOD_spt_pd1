@@ -380,6 +380,7 @@ df$fisher.p.adj <- p.adjust(df$fisher.p.value)
 df$chisq.p.adj <- p.adjust(df$chisq.p.value)
 df$treatment <- factor(df$treatment, levels = c("IgG","Spt","PD1"))
 df$cluster <- factor(df$cluster, levels = rev(levels(pan4$seurat_clusters)))
+df %>% dplyr::select(treatment, cluster, fisher.p.adj) %>% cast(cluster~treatment, value = "fisher.p.adj") 
 
 p_fisher <- df %>%
   ggplot(aes(treatment, cluster, fill=-log10(fisher.p.adj))) + 

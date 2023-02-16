@@ -33,6 +33,16 @@ source("scripts/utils.R") #custom color palettes and other functions
 set.seed(1) #set a seed for reproducibility
 ```
 
+```{r get gene signature of exhaustion}
+texh <- FindMarkers(seurat_integrated, 
+                       ident.1 = "CD8_texh",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05) %>%
+            arrange(desc(avg_log2FC))
+term_exh <- read_excel("ref/signatures/Miller2019_NatureImmuno_SuppTable1.xlsx", sheet = "Terminally Exh.")$gene
+common_to_all_treatments
+```
+
 Recode the pathology levels. Then plot the expression of co-inhibitory receptors:
 ```{r coinhibitory receptor expression}
 cd8_merge <- merge(luoma_cd8, list(boland_cd8, corri))
@@ -47,7 +57,7 @@ cd8_merge$pathology <- recode_factor(cd8_merge$pathology,
 tcon_merge <- merge(luoma_tcon, boland_tcon)
 new_metadata <- data.frame(coinh_count = rowSums(as.data.frame(t(as.data.frame(tcon_merge@assays$RNA@data[c("PDCD1","HAVCR2","CTLA4","LAG3","TIGIT","CD160"),]))) > 0))
 tcon_merge <- AddMetaData(tcon_merge, new_metadata)
-tcon_merge$pathology <- recode_factor(tcon_merge$pathology, 
+tcon_merge$pathology <- recode_factor(tcon_merge$pathology,
                                         "Healthy Control" = "healthy",
                                         "Ulcerative Colitis" = "colitis",
                                         "ICI No Colitis" = "ICI",
@@ -196,6 +206,51 @@ p_pan4_coinh <- pan4@meta.data %>%
                              tip.length = 0)
 
 grid.arrange(p_cd8_coinh, p_pan8_coinh, p_tcon_coinh, p_pan4_coinh, nrow = 2, widths = c(2,1))
+
+```
+
+```{r add Tcon data}
+tcon_merge <- merge(luoma_tcon, boland_tcon)
+prog_exh <- FindMarkers(pan4, ident.1 = "Tcon_prog", group.by="seurat_clusters", only.pos = T)%>%filter(p_val_adj<0.05)%>%arrange(desc(avg_log2FC))
+prog_exh <- convertMouseGeneList(rownames(prog_exh))
+tcon_merge <- AddModuleScore(tcon_merge, features = list(prog_exh), name = "tcon_prog", assay = "RNA")
+
+p_miller_texh <- tcon_merge@meta.data %>% 
+                  group_by(pathology, paper, sample) %>% 
+                  summarize(avg = mean(tcon_prog1)) %>%
+                  ggplot() + 
+                  geom_violin(aes(x = pathology, 
+                                  fill = pathology, 
+                                  y = avg, 
+                                  color = pathology),
+                              alpha = 0.5,
+                              adjust = 1,
+                              draw_quantiles = c(0.25,0.5,0.75),
+                              scale = "width") + 
+                  geom_point(aes(x = pathology, 
+                                 fill = pathology, 
+                                 y = avg, 
+                                 color = pathology),
+                             size = 4,
+                             position = position_jitter()) + 
+                  theme_minimal() + 
+                  theme(panel.spacing = unit(0,"lines"),
+                        axis.title.x = element_blank(),
+                        panel.grid = element_blank(),
+                        panel.border = element_rect(color = "black", size = 0.5, fill = NA)) +
+                  facet_wrap(~paper, scales = "free_x") + 
+                  scale_fill_manual(values = custom_colors("colitis")) + 
+                  scale_color_manual(values = custom_colors("colitis")) +
+                  scale_y_continuous(limits = c(0, 0.3), expand = c(0,0)) +
+                  labs(y = "Progenitor Tcon gene signature from NOD") +
+                  add_pvalue(data.frame(tcon_merge@meta.data %>% 
+                                            group_by(pathology, paper, sample) %>% 
+                                            summarize(avg = mean(tcon_prog1)) %>% 
+                                            ungroup() %>%
+                                            group_by(paper) %>%
+                                            t_test(avg ~ pathology) %>% 
+                                            add_xy_position()),
+                             tip.length = 0)
 
 ```
 
@@ -448,7 +503,7 @@ pan8 <- AddMetaData(pan8, new_metadata)
 
 PD1_markers <- FindMarkers(pan8, 
                        ident.1 = "CD8_texh", 
-                       group.by = "seurat_clusters") %>% 
+                       group.by = "seurat_clusters", only.pos = T) %>% 
             filter(p_val_adj<0.05) %>%
             arrange(desc(avg_log2FC))
 slec_markers <- FindMarkers(pan8, 
@@ -471,6 +526,11 @@ cm_markers <- FindMarkers(pan8,
                        group.by = "seurat_clusters") %>% 
             filter(p_val_adj<0.05) %>%
             arrange(desc(avg_log2FC))
+eff_markers <- FindMarkers(pan8, 
+                       ident.1 = "CD8_eff", 
+                       group.by = "seurat_clusters") %>% 
+            filter(p_val_adj<0.05) %>%
+            arrange(desc(avg_log2FC))
 
 #aim for around 150 genes
 PD1_markers %>% filter(avg_log2FC>0) %>% count()
@@ -481,6 +541,7 @@ Spt_signature <- convertMouseGeneList(Spt_markers %>% filter(avg_log2FC > 0) %>%
 mem_signature <- convertMouseGeneList(mem_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
 slec_signature <- convertMouseGeneList(slec_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
 cm_signature <- convertMouseGeneList(cm_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+eff_signature <- convertMouseGeneList(eff_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
 
 luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(PD1_signature), name = "CD8_PD1_signature")
 luoma_cd8 <- AddModuleScore(luoma_cd8, features = list(mem_signature), name = "CD8_mem_signature")
@@ -815,19 +876,37 @@ grid.arrange(p_corri, p_boland, p_luoma, nrow = 1, widths = c(1,1,2))
 ```
 
 
-```{r cd4 PD1 signature violins}
-stat.test <- data.frame(luoma_tcon@meta.data %>%
-                            group_by(treatment,sample) %>%
-                            summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
-                            ungroup() %>%
-                            t_test(CD4_PD1_signature1 ~ treatment) %>% 
+```{r cd4 Tfh signature violins}
+tfh_markers <- FindMarkers(pan4, 
+                           ident.1 = "Tcon_Tfh", 
+                           group.by = "seurat_clusters") %>% 
+    filter(p_val_adj<0.05) %>%
+    arrange(desc(avg_log2FC))
+tfh_signature <- convertMouseGeneList(tfh_markers %>% filter(avg_log2FC > 0) %>% rownames()) #convert the positive logFC genes to human
+luoma_tcon <- AddModuleScore(luoma_tcon, features = list(tfh_signature), name = "tfh_signature")
+boland_tcon <- AddModuleScore(boland_tcon, features = list(tfh_signature), name = "tfh_signature")
+
+#temporary fix to adjust naming scheme
+luoma_tcon$treatment <- factor(recode_factor(luoma_tcon$treatment, "CT" = "healthy", "NC" = "ICI", "C" = "ICI+colitis"), 
+                              levels = c("healthy","ICI","ICI+colitis"))
+boland_tcon$treatment <- factor(recode_factor(boland_tcon$treatment, "HC" = "healthy", "UC" = "colitis"), levels = c("healthy","colitis"))
+
+cd4_merge <- merge(luoma_tcon, boland_tcon)
+cd4_merge$treatment <- factor(cd4_merge$treatment, 
+                              levels = c("healthy","colitis","ICI","ICI+colitis"))
+
+stat.test <- data.frame(cd4_merge@meta.data %>%
+                            group_by(treatment,sample,paper) %>%
+                            summarize(tfh_signature1 = mean(tfh_signature1)) %>%
+                            group_by(paper) %>%
+                            t_test(tfh_signature1 ~ treatment) %>% 
                             add_xy_position())
 
-p_luoma <- luoma_tcon@meta.data %>%
-    group_by(treatment, sample) %>%
-    summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
+p_luoma <- cd4_merge@meta.data %>%
+    group_by(treatment, sample, paper) %>%
+    summarize(tfh_signature1 = mean(tfh_signature1)) %>%
     ggplot(aes(x = treatment,
-               y = CD4_PD1_signature1)) +
+               y = tfh_signature1)) +
     geom_violin(aes(
                color = treatment,
                fill = treatment),
@@ -843,11 +922,12 @@ p_luoma <- luoma_tcon@meta.data %>%
                position = position_jitter(width = 0.4)) +
     theme_minimal() +
     theme(panel.grid = element_blank(),
+          panel.spacing = unit(0, "cm"),
           panel.border = element_rect(color = "black", 
                                       fill = NA),
           text = element_text(size = 15),
-          legend.position = "right") +
-    #scale_y_continuous(limits = c(0.15, 0.45)) +
+          legend.position = "none") +
+    scale_y_continuous(limits = c(0, 0.125)) +
     scale_color_manual(values = custom_colors("colitis")) +
     scale_fill_manual(values = custom_colors("colitis")) +
     labs(title = "tcon T cells: Luoma", 
@@ -858,22 +938,23 @@ p_luoma <- luoma_tcon@meta.data %>%
     add_pvalue(stat.test,
              label = "p.adj.signif",
              tip.length = 0,
-             label.size = 8)
+             label.size = 8) +
+  facet_wrap(~paper,  scales = "free_x")
 
 ## BOLAND
 stat.test <- data.frame(boland_tcon@meta.data %>%
                             group_by(treatment,sample) %>%
-                            summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
+                            summarize(tfh_signature1 = mean(tfh_signature1)) %>%
                             ungroup() %>%
-                            t_test(CD4_PD1_signature1 ~ treatment) %>% 
+                            t_test(tfh_signature1 ~ treatment) %>% 
                             add_xy_position() %>%
                             add_significance())
 
 p_boland <- boland_tcon@meta.data %>%
     group_by(treatment, sample) %>%
-    summarize(CD4_PD1_signature1 = mean(CD4_PD1_signature1)) %>%
+    summarize(tfh_signature1 = mean(tfh_signature1)) %>%
     ggplot(aes(x = treatment,
-               y = CD4_PD1_signature1)) +
+               y = tfh_signature1)) +
     geom_violin(aes(
                color = treatment,
                fill = treatment),
@@ -906,7 +987,7 @@ p_boland <- boland_tcon@meta.data %>%
              tip.length = 0,
              label.size = 8)
 
-grid.arrange(p_boland, p_luoma, nrow = 1, widths = c(1,2))
+grid.arrange(p_boland, p_luoma, nrow = 1, widths = c(2,3))
 ```
 
 ```{r cd4 Spt signature violins}
@@ -1036,7 +1117,84 @@ ggplot(boland_cd8@meta.data,
 
 Association with clonal expansion:
 ```{r clonal expansion}
+
+
+texh <- FindMarkers(pan8, 
+                       ident.1 = "CD8_texh",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+ifn <- FindMarkers(pan8, 
+                       ident.1 = "Interferon_sensing",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+mem <- FindMarkers(pan8, 
+                       ident.1 = "CD8_mem",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+effmem <- FindMarkers(pan8, 
+                       ident.1 = "CD8_effmem",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+eff <- FindMarkers(pan8, 
+                       ident.1 = "CD8_eff",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+cm <- FindMarkers(pan8, 
+                       ident.1 = "CD8_cm",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+slec <- FindMarkers(pan8, 
+                       ident.1 = "CD8_slec",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+prolif <- FindMarkers(pan8, 
+                       ident.1 = "Proliferating",
+                      group.by = "seurat_clusters") %>% 
+            filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+            arrange(desc(avg_log2FC)) %>%
+            top_n(150, wt = avg_log2FC)
+
+texh_signature <- convertMouseGeneList(rownames(texh)) #convert the positive logFC genes to human
+cm_signature <- convertMouseGeneList( rownames(cm)) #convert the positive logFC genes to human
+ifn_signature <- convertMouseGeneList(rownames(ifn)) #convert the positive logFC genes to human
+mem_signature <- convertMouseGeneList(rownames(mem)) #convert the positive logFC genes to human
+prolif_signature <- convertMouseGeneList(rownames(prolif)) #convert the positive logFC genes to human
+eff_signature <- convertMouseGeneList(rownames(eff)) #convert the positive logFC genes to human
+slec_signature <- convertMouseGeneList(rownames(slec)) #convert the positive logFC genes to human
+
 seurat_merge <- merge(boland_cd8, list(corri, luoma_cd8))
+seurat_merge$treatment <- factor(recode_factor(seurat_merge$treatment, "CT" = "healthy", "NC" = "ICI", "C" = "ICI+colitis", "HC" = "healthy", "UC" = "colitis"), 
+                              levels = c("healthy","ICI","ICI+colitis", "colitis"))
+
+seurat_merge <- AddModuleScore(seurat_merge, features = list(cm_signature), name = "cm_signature", assay = "RNA")
+seurat_merge <- AddModuleScore(seurat_merge, features = list(texh_signature), name = "texh_signature", assay = "RNA")
+seurat_merge <- AddModuleScore(seurat_merge, features = list(ifn_signature), name = "ifn_signature", assay = "RNA")
+seurat_merge <- AddModuleScore(seurat_merge, features = list(prolif_signature), name = "prolif_signature", assay = "RNA")
+seurat_merge <- AddModuleScore(seurat_merge, features = list(mem_signature), name = "mem_signature", assay = "RNA")
+seurat_merge <- AddModuleScore(seurat_merge, features = list(eff_signature), name = "eff_signature", assay = "RNA")
+seurat_merge <- AddModuleScore(seurat_merge, features = list(slec_signature), name = "slec_signature", assay = "RNA")
+
+pan8 <- AddModuleScore(pan8, features = list(rownames(cm)), name = "cm_signature", assay = "RNA")
+pan8 <- AddModuleScore(pan8, features = list(rownames(texh)), name = "texh_signature", assay = "RNA")
+pan8 <- AddModuleScore(pan8, features = list(rownames(ifn)), name = "ifn_signature", assay = "RNA")
+pan8 <- AddModuleScore(pan8, features = list(rownames(prolif)), name = "prolif_signature", assay = "RNA")
+pan8 <- AddModuleScore(pan8, features = list(rownames(mem)), name = "mem_signature", assay = "RNA")
+pan8 <- AddModuleScore(pan8, features = list(rownames(eff)), name = "eff_signature", assay = "RNA")
+pan8 <- AddModuleScore(pan8, features = list(rownames(slec)), name = "slec_signature", assay = "RNA")
 
 new_metadata <- seurat_merge@meta.data %>% 
     rownames_to_column('barcode') %>%
@@ -1055,13 +1213,14 @@ new_metadata <- seurat_merge@meta.data %>%
 seurat_merge <- AddMetaData(seurat_merge, metadata = new_metadata)
 
 medians_2d <- seurat_merge@meta.data %>% 
-  group_by(celltype, paper, treatment, sample) %>% 
-  summarize(PD1_score_median = median(texh_signature1), mem_score_median = median(cm_signature1))
+    filter(!is.na(clonotype_count_bin)) %>%
+    group_by(celltype, paper, treatment, sample, clonotype_count_bin) %>% 
+    summarize(PD1_score_median = mean(texh_signature1), mem_score_median = mean(eff_signature1))
 
 ggplot(seurat_merge@meta.data %>% 
-         filter(!is.na(clonotype_id)),
+           filter(!is.na(clonotype_id)),
        aes(x=texh_signature1, 
-           y=cm_signature1, 
+           y=eff_signature1, 
            group = treatment)) +
     stat_density_2d(geom = "polygon", 
                     aes(alpha = ..level.., 
@@ -1072,21 +1231,19 @@ ggplot(seurat_merge@meta.data %>%
           panel.spacing = unit(0, "lines"),
           strip.background = element_blank()) +
     scale_fill_manual(values = custom_colors("colitis")) +
-  scale_color_manual(values = custom_colors("colitis")) +
+    scale_color_manual(values = custom_colors("colitis")) +
     labs(y = "Memory ModuleScore", 
          x = "Texh/PD1 ModuleScore") + 
     facet_wrap(paper ~ clonotype_count_bin) +
     guides(alpha = "none") +
-  geom_point(data = medians_2d, aes(x = PD1_score_median, y = mem_score_median, color = treatment))
+    geom_point(data = medians_2d, aes(x = PD1_score_median, y = mem_score_median, color = treatment),
+               size = 5)
 
 #mouse next
-seurat_integrated <- AddModuleScore(seurat_integrated, list(PD1_markers %>% filter(p_val_adj < 0.05) %>% rownames()), name = "CD8_PD1_signature", assay = "RNA")
-seurat_integrated <- AddModuleScore(seurat_integrated, list(mem_markers %>% filter(p_val_adj < 0.05) %>% rownames()), name = "CD8_mem_signature", assay = "RNA")
-
 medians_2d <- pan8@meta.data %>% 
    filter(!is.na(pan_clonotype_count) & celltype == "CD8") %>%
   group_by(mouse_id, treatment, pan_clonotype_count_bin) %>% 
-  summarize(PD1_score_median = median(CD8_PD1_signature1), mem_score_median = median(CD8_mem_signature1))
+  summarize(PD1_score_median = median(texh_signature1), mem_score_median = median(cm_signature1))
 
 ggplot() +
   stat_density_2d(data = pan8@meta.data %>% 
@@ -1094,18 +1251,19 @@ ggplot() +
                   dplyr::select(-treatment),
                     geom = "polygon", 
                     aes(alpha = ..level..,
-                        x=CD8_PD1_signature1, 
-                        y=CD8_mem_signature1), 
+                        x=texh_signature1, 
+                        y=cm_signature1), 
                     bins = 6, fill = "black") +
     geom_point(data = medians_2d %>% filter(treatment == "IgG") %>% ungroup() %>% dplyr::select(-treatment), 
-               aes(x = PD1_score_median, y = mem_score_median)) +
+               aes(x = PD1_score_median, y = mem_score_median),
+               size = 5) +
     stat_density_2d(data = pan8@meta.data %>% 
          filter(!is.na(pan_clonotype_count) & celltype == "CD8" & treatment != "IgG"),
                     geom = "polygon", 
                     aes(alpha = ..level.., 
                         fill = treatment,
-                        x=CD8_PD1_signature1, 
-                        y=CD8_mem_signature1), 
+                        x=texh_signature1, 
+                        y=cm_signature1), 
                     bins = 6) +
     theme(panel.background = element_blank(),
           panel.border = element_rect(color = "black", fill = NA),

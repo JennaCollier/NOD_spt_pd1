@@ -18,7 +18,7 @@ require(reshape, quietly = T) #melting and casting data.frames
 require(ggplot2, quietly = T) #plotting
 require(rstatix, quietly = T) #adding p values to plots
 require(ggprism, quietly = T) #adding p values to plots
-require(ggsci, quirtly = T) #IGV color palette
+require(ggsci, quietly = T) #IGV color palette
 require(patchwork, quietly = T) #adding p values to plots
 require(magrittr, quietly = T) #adding p values to plots
 require(gridExtra, quietly = T) #display multiple plots
@@ -127,6 +127,222 @@ p_cd4_blood_pie <- seurat_integrated@meta.data %>%
                     #                      show.legend = FALSE) +
                     scale_fill_manual(values = custom_colors("clusters"))
 grid.arrange(p_cd8_blood_pie, p_cd4_blood_pie, nrow = 2)
+```
+
+```{r diversity index for clusters in PM and non-PM}
+## PANCREAS
+#start with PM cells (CD8)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue == "pancreas" & pancreas_matching == "PM" & cd4_or_cd8 == "CD8") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD8", 
+                          tissue = "pancreas",
+                          pancreas_matching = "PM",
+                          simpson = totalN*(totalN - 1) / numerator)
+
+#non-PM cells (CD8)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue == "pancreas" & pancreas_matching == "non-PM" & cd4_or_cd8 == "CD8") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- rbind(diversities, 
+                                 data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD8", 
+                          tissue = "pancreas",
+                          pancreas_matching = "non-PM",
+                          simpson = totalN*(totalN - 1) / numerator))
+
+#non-PM cells (CD4)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue == "pancreas" & pancreas_matching == "non-PM" & cd4_or_cd8 == "CD4") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- rbind(diversities, 
+                                 data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD4", 
+                          tissue = "pancreas",
+                          pancreas_matching = "non-PM",
+                          simpson = totalN*(totalN - 1) / numerator))
+
+#PM cells (CD4)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue == "pancreas" & pancreas_matching == "PM" & cd4_or_cd8 == "CD4") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- rbind(diversities, 
+                                 data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD4", 
+                          tissue = "pancreas",
+                          pancreas_matching = "PM",
+                          simpson = totalN*(totalN - 1) / numerator))
+
+## PERIPHERY
+#start with PM cells (CD8)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue != "pancreas" & pancreas_matching == "PM" & cd4_or_cd8 == "CD8") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- rbind(diversities,
+                     data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD8", 
+                          tissue = "periphery",
+                          pancreas_matching = "PM",
+                          simpson = totalN*(totalN - 1) / numerator))
+
+#non-PM cells (CD8)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue != "pancreas" & pancreas_matching == "non-PM" & cd4_or_cd8 == "CD8") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- rbind(diversities, 
+                                 data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD8", 
+                          tissue = "periphery",
+                          pancreas_matching = "non-PM",
+                          simpson = totalN*(totalN - 1) / numerator))
+
+#non-PM cells (CD4)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue != "pancreas" & pancreas_matching == "non-PM" & cd4_or_cd8 == "CD4") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- rbind(diversities, 
+                                 data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD4", 
+                          tissue = "periphery",
+                          pancreas_matching = "non-PM",
+                          simpson = totalN*(totalN - 1) / numerator))
+
+#PM cells (CD4)
+tcrtypecounts <- seurat_integrated@meta.data %>% 
+    filter(tissue != "pancreas" & pancreas_matching == "PM" & cd4_or_cd8 == "CD4") %>%
+    group_by(treatment,mouse_id,
+             seurat_clusters) %>% 
+    tally() %>% 
+  reshape::cast(treatment+mouse_id~seurat_clusters, value= "n", fill = 0)
+totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
+df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
+corner(df)
+numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
+diversities <- rbind(diversities, 
+                                 data.frame(tcrtypecounts %>% 
+                              dplyr::select(c(treatment, mouse_id)), 
+                          celltype = "CD4", 
+                          tissue = "periphery",
+                          pancreas_matching = "PM",
+                          simpson = totalN*(totalN - 1) / numerator))
+
+
+diversities$treatment <- factor(diversities$treatment, levels = c("IgG", "Spt", "PD1")) #factor the pathologies
+
+p_periphery <- diversities %>%
+    filter(pancreas_matching == "non-PM") %>%
+    ggplot(aes(x = treatment,
+               y = simpson,
+               fill = treatment,
+               color = treatment)) +
+    geom_violin(alpha = 0.5,
+                adjust = 1,
+                scale = "width",
+                draw_quantiles = 0.5) +
+    geom_point(size = 4) +
+    labs(y = "Diversity index") +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          text = element_text(size = 15),
+          panel.border = element_rect(colour = "black",
+                                      fill=NA,
+                                      size=1),
+          #strip.text = element_blank(),
+          axis.ticks.y = element_line(),
+          panel.spacing = unit(0, "cm"),
+          legend.position = "none") +
+    labs(x = NULL) +
+    scale_fill_manual(values = custom_colors("treatments")) +
+    scale_color_manual(values = custom_colors("treatments")) +
+    scale_y_continuous(limits = c(1,9), breaks = c(2,4,6,8)) +
+    facet_wrap(tissue ~ celltype)
+
+p_pancreas <- diversities %>%
+    filter(pancreas_matching == "PM") %>%
+    ggplot(aes(x = treatment,
+               y = simpson,
+               fill = treatment,
+               color = treatment)) +
+    geom_violin(alpha = 0.5,
+                adjust = 1,
+                scale = "width",
+                draw_quantiles = 0.5) +
+    geom_point(size = 4) +
+    labs(y = "Diversity index") +
+    theme_minimal() +
+    theme(panel.grid = element_blank(),
+          text = element_text(size = 15),
+          panel.border = element_rect(colour = "black",
+                                      fill=NA,
+                                      size=1),
+          #strip.text = element_blank(),
+          axis.ticks.y = element_line(),
+          panel.spacing = unit(0, "cm"),
+          legend.position = "none") +
+    labs(x = NULL) +
+    scale_fill_manual(values = custom_colors("treatments")) +
+    scale_color_manual(values = custom_colors("treatments")) +
+    scale_y_continuous(limits = c(1,9), breaks = c(2,4,6,8)) +
+    facet_wrap(tissue ~ celltype)
+
+grid.arrange(p_pancreas, p_periphery, nrow = 1)
 ```
 
 Show the top 50 clonotypes as a percentage of TCRs detected in the PANCREAS as a cumulative sum and also the clone sizes for the different treatment groups.

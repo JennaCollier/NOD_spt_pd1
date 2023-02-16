@@ -1,0 +1,212 @@
+---
+title: "1_integrated_seurat_generation"
+output: rmarkdown::github_document
+date: '2022-07-08'
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
+```
+
+```{r libraries, message = FALSE, warning = FALSE}
+require(dplyr, quietly = T) #simple manipulation of data.frames
+require(Seurat, quietly = T) #scRNA-seq analysis
+require(reshape, quietly = T) #melting and casting data.frames
+require(ggplot2, quietly = T) #plotting
+require(rstatix, quietly = T) #adding p values to plots
+require(ggprism, quietly = T) #adding p values to plots
+require(ggsci, quirtly = T) #IGV color palette
+require(patchwork, quietly = T) #adding p values to plots
+require(magrittr, quietly = T) #adding p values to plots
+require(gridExtra, quietly = T) #display multiple plots
+require(ggrepel, quietly = T) #labels for plots
+require(tibble, quietly = T) #rownames_to_column function
+require(useful, quietly = T) #corner function to peek at data.frames
+require(viridis, quietly = T) #viridis color palettes
+require(readxl, quietly = T) #reading Excel files
+require(msigdbr, quietly = T) #accessing gene signatures from mSigDB
+source("scripts/utils.R") #custom color palettes and other functions
+set.seed(1) #set a seed for reproducibility
+```
+
+## Initialize Seurat object
+
+```{r read in Seurats}
+seurat_integrated <- readRDS("C:/Users/Strix/GitRepos/NOD_spt_pd1/objects/all_cells_integrated.rds")
+```
+
+
+Match TCRs within a certain Levenstein distance from those in the mcpas and VDJdb databases.
+```{r Annotate TCRs using Levenstein distance}
+library(stringdist)
+
+vdjdb <- read.table(file = "tcr_databases/vdjdb-2022-03-30/vdjdb_full.txt", sep = '\t', header = TRUE, fill = TRUE) %>%
+           filter(cdr3.alpha != "" & cdr3.beta != "" & species == "MusMusculus")
+
+colnames(vdjdb)[which(colnames(vdjdb) == "cdr3.alpha")] <- "TRA.cdr3"
+colnames(vdjdb)[which(colnames(vdjdb) == "cdr3.beta")] <- "TRB.cdr3"
+colnames(vdjdb)
+
+mcpas <- read.csv("tcr_databases/2022-09-10-McPAS_TCR.csv") %>%
+          filter(!is.na(CDR3.alpha.aa) & !is.na(CDR3.beta.aa) & Species == "Mouse")
+colnames(mcpas)[which(colnames(mcpas) == "cdr3.alpha.aa")] <- "TRA.cdr3"
+colnames(mcpas)[which(colnames(mcpas) == "cdr3.beta.aa")] <- "TRB.cdr3"
+colnames(mcpas)
+
+final_cols <- c("TRA.cdr3","TRB.cdr3","mhc","pathology","antigen","epitope","cell")
+
+mcpas_cols <- c("CDR3.alpha.aa","CDR3.beta.aa","MHC","Pathology","Antigen.protein","Epitope.peptide","T.Cell.Type")
+#vdj_tbl <- reshape2::melt(mcpas[,mcpas_cols], id=mcpas_cols[3:7]) %>% filter(!is.na(value)) %>% select(variable,value, mcpas_cols[3:7])
+vdj_tbl <- mcpas[,mcpas_cols]
+colnames(vdj_tbl) <- final_cols
+#vdj_tbl$chain <- ifelse(vdj_tbl$chain == "CDR3.alpha.aa","TRA","TRB")
+
+vdjdb_cols <- c("cdr3.alpha","cdr3.beta","mhc.a","antigen.gene","antigen.epitope","mhc.class")
+vdjdb_tmp <- vdjdb[,vdjdb_cols]
+vdjdb_tmp$mhc.class <- ifelse(vdjdb_tmp$mhc.class == "MHCII", "CD4", ifelse(vdjdb_tmp$mhc.class == "MHCI", "CD8", NA))
+vdjdb_tmp$Pathology <- NA
+vdjdb_tmp <- vdjdb_tmp %>% dplyr::select(cdr3.alpha,cdr3.beta,mhc.a,Pathology,antigen.gene,antigen.epitope,mhc.class)
+colnames(vdjdb_tmp) <- final_cols
+
+vdj_tbl <- unique(rbind(vdj_tbl, vdjdb_tmp))
+write.table(vdj_tbl, "objects/VDJdb_mcpas_merge.tsv", sep = "\t")
+
+# # Factor the various columns to standardize naming conventions
+# levels(factor(vdj_tbl$chain))
+# 
+# # MHC
+# levels(factor(vdj_tbl$mhc))
+# vdj_tbl <- vdj_tbl %>% mutate(mhc = replace(mhc, mhc %in% c("H-2kb","H-2kb","H-2KB"), "H-2Kb"))
+# vdj_tbl <- vdj_tbl %>% mutate(mhc = replace(mhc, mhc == "HLA-A*2:01", "HLA-A*02:01"))
+# vdj_tbl <- vdj_tbl %>% mutate(mhc = replace(mhc, mhc %in% c("H-2db","H-2Db "), "H-2Db"))
+# vdj_tbl <- vdj_tbl %>% mutate(mhc = replace(mhc, mhc %in% c("H2-b"), "H-2b"))
+# vdj_tbl <- vdj_tbl %>% mutate(mhc = replace(mhc, mhc %in% c("H-2g7"), "I-Ag7"))
+# 
+# # Combine same pathologies
+# levels(factor(vdj_tbl$pathology))
+# 
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Diabetes Type 1" , "T1D"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Systemic Lupus Erythematosus (SLE)", "SLE"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Experimental autoimmune encephalomyelitis (EAE)", "EAE"))
+# 
+# # Too many pathologies. Combine similar pathologies into groups.
+# # Tumor
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Oncoprotein", "Tumor"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Melanoma", "Tumor"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Lymphoma", "Tumor"))
+# 
+# # Viral
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Murine leukemia virus (MuLV)", "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "West Nile virus", "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Herpes simplex virus 1 (HSV1)", "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Vesicular stomatitis virus", "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Japanese encephalitis", "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Tick-borne encephalitis", "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Human immunodeficiency virus (HIV) related", "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Lymphocytic choriomeningitis virus (LCMV)", "Viral"))
+# 
+# # Autoimmune
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Graft Vs Host Disease", "Autoimmune"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Chronic Obstructive Lung Disease", "Autoimmune"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Collagen type II-induced arthritis", "Autoimmune"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Allograft rejection", "Autoimmune"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, pathology == "Lupus nephritis", "Autoimmune"))
+# 
+# # Remove parasitic pathologies
+# vdj_tbl <- vdj_tbl %>% filter(!pathology %in% c("Plasmodium berghei","Trypanosoma cruzi","S. mansoni"))
+# vdj_tbl <- vdj_tbl %>% filter(antigen != "GAP50")
+# 
+# # Shorten many antigen names
+# levels(factor(vdj_tbl$antigen))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Polymerase acidic protein (Polymerase acidic protein (Polymerase acidic protein (PA)))", "PA"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Myelin oligodendrocyte glycoprotein" , "MOG"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "NP " , "NP"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "SNRNuclear protein (Nuclear protein (NP))70" , "SNRP70"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Pre-glycoprotein polyprotein GP complex" , "GPC"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Nuclear protein of vesicular stomatitis Indiana virus" , "VSIV-NP"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "islet amyloid polypeptide" , "IAPP"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Ovotransferrin" , "OVA"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Myelin basic protein" , "Mbp"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "ATP dependent rna helicase ddx3y" , "ddx3y"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Hemogloblin-like protein HbO" , "HbO"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Envelope glycoprotein B" , "gB"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Collagen alpha-1"  , "COL1A1"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "chromogranin A"  , "CgA"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Wilms tumor protein"  , "Wilms"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Protein E6/Protein E7"  , "E3/E7"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Circumsporozoite protein"  , "Malaria"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Insulin-2"  , "Ins2"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen == "Murine leukemia virus (MuLV) envelope protein (MLVs )"  , "MuLV"))
+# 
+# # Some antigens are associated with multiple pathologies - associate them with a single pathology
+# vdj_tbl %>% group_by(antigen,pathology) %>% tally() %>% arrange(antigen) %>% data.frame()
+# 
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, antigen %in% c("GPC","IE3") , "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, antigen == "KRAS" , "Tumor"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, antigen == "MCC" , "Tumor"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, antigen %in% c("M38","M45","m139") , "mCMV"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, antigen == "Mbp" , "EAE"))
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, antigen %in% c("NP","PA","PB1") , "Influenza"))
+# 
+# 
+# # Antigens "N" and "M" correspond to VSV and RSV peptides, respectively
+# vdj_tbl <- vdj_tbl %>% mutate(pathology = replace(pathology, antigen %in% c("N","M") , "Viral"))
+# vdj_tbl <- vdj_tbl %>% mutate(antigen = replace(antigen, antigen %in% c("N","M"), NA))
+# 
+# vdj_tbl %>% filter(is.na(pathology)) %>% group_by(antigen,pathology) %>% tally() %>% arrange(antigen) %>% data.frame()
+# 
+# vdj_tbl <- unique(vdj_tbl)
+# write.table(vdj_tbl, "objects/single_chain_VDJdb_mcpas.csv")
+```
+
+``` {r CD4 matching with max Levensthein distance}
+
+table_to_cluster <- seurat_integrated@meta.data %>% 
+  dplyr::select(tcrtype_id,TRA.cdr3,TRB.cdr3,celltype) %>%
+  filter(!is.na(tcrtype_id)) %>% 
+  unique()
+table_to_cluster$cell <- ifelse(table_to_cluster$celltype == "CD8", "CD8", "CD4")
+table_to_cluster <- table_to_cluster %>% select(-celltype)
+
+for (i in 1:dim(table_to_cluster)[1]) {
+  vdj_matches <- rbind(vdj_tbl[which(vdj_tbl$TRA.cdr3 == table_to_cluster$TRA.cdr3[i]),],
+                       vdj_tbl[which(vdj_tbl$TRB.cdr3 == table_to_cluster$TRB.cdr3[i]),])
+  vdj_matches <- vdj_matches[rowSums(is.na(vdj_matches)) != ncol(vdj_matches),] # Remove rows that are all NA
+  
+  if (!all(is.na(vdj_matches))){
+    table_to_cluster[i,"mhc"] <- paste(unique(vdj_matches$mhc[!is.na(vdj_matches$mhc)]),collapse = ";")
+    table_to_cluster[i,"pathology"] <- paste(unique(vdj_matches$pathology[!is.na(vdj_matches$pathology)]),collapse = ";")
+    table_to_cluster[i,"antigen"] <- paste(unique(vdj_matches$antigen[!is.na(vdj_matches$antigen)]),collapse = ";")
+    table_to_cluster[i,"epitope"] <- paste(unique(vdj_matches$epitope[!is.na(vdj_matches$epitope)]),collapse = ";")
+  }
+}
+
+table_to_cluster[which(table_to_cluster$pathology==""),"pathology"] <- NA
+table_to_cluster[which(table_to_cluster$mhc==""),"mhc"] <- NA
+table_to_cluster[which(table_to_cluster$antigen==""),"antigen"] <- NA
+table_to_cluster[which(table_to_cluster$epitope==""),"epitope"] <- NA
+
+# Still too many groups. Combine them into smaller and more manageable groups:
+
+
+new_metadata <- cd4@meta.data %>% select(tcrtype_id) %>% rownames_to_column("barcode")
+new_metadata <- merge(new_metadata, table_to_cluster[,-(2:3)], by="tcrtype_id")
+new_metadata <- new_metadata[,-1]
+new_metadata <- new_metadata %>% column_to_rownames("barcode")
+
+cd4 <- AddMetaData(cd4, metadata = new_metadata)
+
+new_metadata <- cd4@meta.data %>% dplyr::select(tcrtype_groups,treatment) %>% 
+  rownames_to_column("barcode") %>%
+  mutate(diabetes = ifelse(treatment == "IgG", "normoglycemic", "hyperglycemic"),
+         pathogenic_tcr = ifelse(tcrtype_groups == "IgG", "nonpathogenic", "pathogenic")) %>%
+  column_to_rownames("barcode") %>% 
+  dplyr::select(diabetes, pathogenic_tcr)
+
+cd4 <- AddMetaData(cd4, metadata = new_metadata)
+
+#saveRDS(cd4, file='objects/separate/seurat_CD4.rds')
+
+```
+

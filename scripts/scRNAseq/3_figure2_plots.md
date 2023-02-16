@@ -1,17 +1,13 @@
----
-title: "3_figure2_plots"
-output: rmarkdown::github_document
-date: '2022-07-10'
----
+3_figure2_plots
+================
+2022-07-10
 
-The purpose of this figure is to show that CD8+ T cells in the pancreas show a gain in proliferation, gain in exhaustion-like features, and loss of memory-like features in checkpoint-induced T1D compared to spontaneous T1D.
+The purpose of this figure is to show that CD8+ T cells in the pancreas
+show a gain in proliferation, gain in exhaustion-like features, and loss
+of memory-like features in checkpoint-induced T1D compared to
+spontaneous T1D.
 
-```{r setup, include=FALSE, echo=FALSE}
-knitr::opts_chunk$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
-knitr::opts_knit$set(echo = TRUE, root.dir = "C:/Users/Strix/GitRepos/NOD_spt_pd1")
-```
-
-```{r libraries, message = FALSE, warning = FALSE}
+``` r
 require(tidyr, quietly = T) #pivot_wider function
 require(dplyr, quietly = T) #simple manipulation of data.frames
 require(Seurat, quietly = T) #scRNA-seq analysis
@@ -37,15 +33,20 @@ source("scripts/utils.R") #custom color palettes and other functions
 set.seed(1) #set a seed for reproducibility
 ```
 
-Read in the integrated seurat object containing CD4+ and CD8+ T cells from all tissues and the T cells only the pancreas:
-```{r Read in data}
+Read in the integrated seurat object containing CD4+ and CD8+ T cells
+from all tissues and the T cells only the pancreas:
+
+``` r
 seurat_integrated <- readRDS("objects/seurat_integrated_clustered.rds") #all T cells from all tissues
 pan8 <- readRDS("objects/seurat_cd8_panonly_clustered.rds") #CD8+ T cells from pancreas only
 pan4 <- readRDS("objects/seurat_cd4_panonly_clustered.rds") #CD4+ T cells from pancreas only
 ```
 
-The purpose of these figures are to show that PD-1 blockade promotes CD8+ T cell clonal expansion, loss of a memory-like subset, and exhaustion-like transcriptional features in NOD pancreas.
-```{r plot UMAP of different treatment groups}
+The purpose of these figures are to show that PD-1 blockade promotes
+CD8+ T cell clonal expansion, loss of a memory-like subset, and
+exhaustion-like transcriptional features in NOD pancreas.
+
+``` r
 pan8_cls <- pan8@meta.data %>% 
               dplyr::select(UMAP_1, UMAP_2, seurat_clusters) %>% 
               group_by(seurat_clusters) %>% 
@@ -115,8 +116,16 @@ p_cd8_panonly_treatments <- pan8@meta.data %>%
 grid.arrange(p_cd8_panonly_cluster, p_cd8_panonly_treatments, widths = c(1,3))
 ```
 
-Next, a stacked bar plot of the treatment group distribution within each seurat cluster:
-```{r stacked bar chart of treatment groups per seurat cluster}
+    ## Warning: Removed 7968 rows containing missing values (geom_point).
+
+    ## Warning: Removed 2656 rows containing missing values (geom_point).
+
+![](3_figure2_plots_files/figure-gfm/plot%20UMAP%20of%20different%20treatment%20groups-1.png)<!-- -->
+
+Next, a stacked bar plot of the treatment group distribution within each
+seurat cluster:
+
+``` r
 p_treatment_per_seurat_cluster <- pan8@meta.data %>% 
     ggplot(aes(x = factor(seurat_clusters, 
                         levels = rev(levels(pan8$seurat_clusters))), 
@@ -139,8 +148,12 @@ p_treatment_per_seurat_cluster <- pan8@meta.data %>%
 p_treatment_per_seurat_cluster
 ```
 
-Bar chart showing the difference in the seurat clusters within each treatment group by each mouse. This is also shown by Fishers Exact test.
-```{r bar chart of percent seurat clusters in each treatment group}
+![](3_figure2_plots_files/figure-gfm/stacked%20bar%20chart%20of%20treatment%20groups%20per%20seurat%20cluster-1.png)<!-- -->
+
+Bar chart showing the difference in the seurat clusters within each
+treatment group by each mouse. This is also shown by Fishers Exact test.
+
+``` r
 p_seurat_cluster_per_treatment <- pan8@meta.data %>%
                                     group_by(treatment, mouse_id, seurat_clusters) %>%
                                     tally() %>%
@@ -172,8 +185,12 @@ p_seurat_cluster_per_treatment <- pan8@meta.data %>%
 p_seurat_cluster_per_treatment
 ```
 
-A volcano plot shows the DE genes between the PD1 and Spt treatment groups:
-```{r volcano plot of pancreas-only differences PD1 and Spt}
+![](3_figure2_plots_files/figure-gfm/bar%20chart%20of%20percent%20seurat%20clusters%20in%20each%20treatment%20group-1.png)<!-- -->
+
+A volcano plot shows the DE genes between the PD1 and Spt treatment
+groups:
+
+``` r
 cutoff <- 0.25 #set a cutoff for DE gene expression
 ident1 <- "PD1"
 ident2 <- "Spt"
@@ -188,7 +205,16 @@ volcanodata <- FindMarkers(pan8, #define the table of DE genes
                        assay = "RNA")
 volcanodata$gene <- rownames(volcanodata) #rownames are genes
 corner(volcanodata)
+```
 
+    ##                  p_val avg_log2FC pct.1 pct.2     p_val_adj
+    ## Mbd2     6.855408e-261  1.3919770 0.649 0.138 7.764435e-257
+    ## Tle5     2.477759e-222  1.1735510 0.885 0.465 2.806310e-218
+    ## Hsp90ab1 3.452189e-140 -0.8637080 0.912 0.951 3.909949e-136
+    ## Pcbp1    3.254960e-132  0.9228640 0.546 0.176 3.686568e-128
+    ## Zdhhc18  2.147971e-130  0.8690588 0.502 0.146 2.432792e-126
+
+``` r
 #assess significance
 volcanodata$DE <- 'None' #set all significance to none
 volcanodata[which(volcanodata$p_val_adj < 0.05 & volcanodata$avg_log2FC >= cutoff),"DE"] <- ident1 #positive avg_log2FC are associated with ident.1
@@ -237,8 +263,20 @@ volcanodata %>%
                          max.overlaps = 50)
 ```
 
-Show the top 50 clonotypes as a percentage of TCRs detected as a cumulative sum. The clone sizes for the different treatment groups are also plotted. The diversity analysis is done by calculating the Simpson index without replacement, as it is less affected by differences in the absolute number of cells:
-```{r top 50 clonotypes and clone size}
+    ## Warning: Removed 5 rows containing missing values (geom_point).
+
+    ## Warning: ggrepel: 274 unlabeled data points (too many overlaps). Consider
+    ## increasing max.overlaps
+
+![](3_figure2_plots_files/figure-gfm/volcano%20plot%20of%20pancreas-only%20differences%20PD1%20and%20Spt-1.png)<!-- -->
+
+Show the top 50 clonotypes as a percentage of TCRs detected as a
+cumulative sum. The clone sizes for the different treatment groups are
+also plotted. The diversity analysis is done by calculating the Simpson
+index without replacement, as it is less affected by differences in the
+absolute number of cells:
+
+``` r
 ## TOP 50 CLONOTYPES
 cumulative_sums <- pan8@meta.data %>% filter(!is.na(clonotype_id)) %>% 
                       group_by(treatment, clonotype_id, pan_clonotype_count) %>% 
@@ -280,7 +318,11 @@ p_top50_clonos <- cumulative_sums %>%
                          y = "Cumulative % CD8 TCRs") +
                     facet_wrap(~ treatment, scales = "free_x")
 p_top50_clonos
+```
 
+![](3_figure2_plots_files/figure-gfm/top%2050%20clonotypes%20and%20clone%20size-1.png)<!-- -->
+
+``` r
 ## BOXPLOT OF CLONE SIZE
 stat.test <- data.frame(pan8@meta.data %>%
                           dplyr::select(treatment, clonotype_id, pan_clonotype_count) %>%
@@ -324,17 +366,60 @@ p_boxplot_clone_size <- pan8@meta.data %>%
                                      label.size = 7) 
 
 grid.arrange(p_top50_clonos, p_boxplot_clone_size, widths = c(2,1))
+```
 
+    ## Warning: Removed 42 rows containing non-finite values (stat_boxplot).
+
+    ## Warning: Removed 42 rows containing missing values (geom_point).
+
+![](3_figure2_plots_files/figure-gfm/top%2050%20clonotypes%20and%20clone%20size-2.png)<!-- -->
+
+``` r
 #DIVERSITY ANALYSIS
 tcrtypecounts <- rbind(data.frame(pan8@meta.data %>% dplyr::select(treatment, mouse_id, clonotype_id, clonotype_count)))
 corner(tcrtypecounts)
+```
 
+    ##                          treatment mouse_id  clonotype_id clonotype_count
+    ## pan_PD1_AAACCTGTCAGCACAT       PD1    PD1_2          <NA>              NA
+    ## pan_PD1_AAACGGGGTCAGTGGA       PD1    PD1_1          <NA>              NA
+    ## pan_PD1_AAACGGGGTCATATGC       PD1    PD1_3   clonotype57              27
+    ## pan_PD1_AAACGGGGTGGTCTCG       PD1    PD1_3 clonotype7147               1
+    ## pan_PD1_AAACGGGTCCTTGCCA       PD1    PD1_1   clonotype25              50
+
+``` r
 tcrtypecounts <- tcrtypecounts %>% filter(!is.na(clonotype_id)) %>% cast(treatment + mouse_id  ~ clonotype_id)
-corner(tcrtypecounts)
+```
 
+    ## Using clonotype_count as value column.  Use the value argument to cast to override this choice
+
+    ## Aggregation requires fun.aggregate: length used as default
+
+``` r
+corner(tcrtypecounts)
+```
+
+    ##   treatment mouse_id clonotype1 clonotype10 clonotype1000
+    ## 1       IgG    IgG_1        234           0             0
+    ## 2       IgG    IgG_2          0           0             0
+    ## 3       IgG    IgG_3          0           0             0
+    ## 4       Spt    Spt_1          0           0             0
+    ## 5       Spt    Spt_2          0           0             0
+
+``` r
 totalN <- tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)) %>% rowSums() # Total N by row sums
 df <- sapply(tcrtypecounts %>% dplyr::select(-c(treatment, mouse_id)), function(x) (x - 1)*x) # Calculate x(x-1) for each value in df
 corner(df)
+```
+
+    ##      clonotype1 clonotype10 clonotype1000 clonotype101 clonotype102
+    ## [1,]      54522           0             0            0            0
+    ## [2,]          0           0             0            0           42
+    ## [3,]          0           0             0            0            0
+    ## [4,]          0           0             0          210            0
+    ## [5,]          0           0             0            0            0
+
+``` r
 numerator <- df %>% rowSums() # Calculate numerator of equation (x in above)
 
 # Calculate simpson index
@@ -375,13 +460,16 @@ diversities %>%
                inherit.aes = F,
                label = "p.adj.signif",
                 y.position = "y.position") 
-
 ```
 
+![](3_figure2_plots_files/figure-gfm/top%2050%20clonotypes%20and%20clone%20size-3.png)<!-- -->
 
+There is an outstanding question in the field as to whether diabetogenic
+T cells become exhausted in the pancreas. To explore this, co-inhibitory
+receptor expression is examined, in addition to expression of an
+exhaustion-associated gene signature:
 
-There is an outstanding question in the field as to whether diabetogenic T cells become exhausted in the pancreas. To explore this, co-inhibitory receptor expression is examined, in addition to expression of an exhaustion-associated gene signature:
-```{r}
+``` r
 p_cd8_panonly_coinh_umap <- pan8@meta.data %>% 
                         ggplot(aes(x = UMAP_1, 
                                    y = UMAP_2, 
@@ -402,7 +490,12 @@ p_cd8_panonly_coinh_umap <- pan8@meta.data %>%
                                                                         shape=19)), 
                                size = guide_legend()) +
                         scale_color_manual(values = scales::seq_gradient_pal("#ffe4c4", "#2f4f4f", "Lab")(seq(0,1,length.out=7)), limits = c(0,6))
+```
 
+    ## Warning: Continuous limits supplied to discrete scale.
+    ## Did you mean `limits = factor(...)` or `scale_*_continuous()`?
+
+``` r
 stat.test <- data.frame(pan8@meta.data %>% 
                             wilcox_test(coinh_count ~ treatment))
 
@@ -435,7 +528,11 @@ p_cd8_panonly_coinh_violin <-  pan8@meta.data %>%
                                              y.position = c(6.5, 6))
 
 grid.arrange(p_cd8_panonly_coinh_umap, p_cd8_panonly_coinh_violin, nrow = 1, widths = c(2,1))
+```
 
+![](3_figure2_plots_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
+
+``` r
 # TERMINALLY EXHAUSTED MODULE SCORE ALL CELLS
 p_vals <- pan8@meta.data %>% 
             wilcox_test(Miller2019_terminally_exh1 ~ treatment, p.adjust.method = "BH") %>%
@@ -493,12 +590,23 @@ p_exh_mice <- pan8@meta.data %>%
                 labs(y = "Miller2019 terminally\nexhausted score",
                      color = "Treatment",
                      fill = "Treatment")
+```
 
+    ## `summarise()` has grouped output by 'treatment'. You can override using the
+    ## `.groups` argument.
+
+``` r
 grid.arrange(p_exh_all_cells, p_exh_mice, nrow = 1)
 ```
 
-A Chi squared and Fisher's exact test will be used to measure the differences in the proportions of each cluster. This is done by looping through clusters and treatment groups to build a list of contingency tables:
-```{r Fishers exact test of proportions of clusters}
+![](3_figure2_plots_files/figure-gfm/unnamed-chunk-1-2.png)<!-- -->
+
+A Chi squared and Fisher’s exact test will be used to measure the
+differences in the proportions of each cluster. This is done by looping
+through clusters and treatment groups to build a list of contingency
+tables:
+
+``` r
 contingency_list <- list() #contingency tables as a list
 df <- data.frame() #list of results from stats tests
 
@@ -509,7 +617,17 @@ tbl <- pan8@meta.data %>%
           cast(seurat_clusters ~ treatment, value = "n")
 tbl$seurat_clusters <- factor(tbl$seurat_clusters)
 head(tbl)
+```
 
+    ##   seurat_clusters IgG Spt PD1
+    ## 1          CD8_cm 332 484 123
+    ## 2         CD8_mem 162 470  41
+    ## 3      CD8_effmem 120 289  16
+    ## 4        CD8_slec 159 213  36
+    ## 5         CD8_eff 369 973  97
+    ## 6        CD8_pexh  82 269  83
+
+``` r
 #loop through treatments and clusters to build list of contingency tables
 for (current_treatment in levels(pan8$treatment)) {
   for (current_cluster in levels(tbl$seurat_clusters)) {
@@ -594,8 +712,18 @@ p_raw <- tbl %>%
 grid.arrange(p_raw, p_fisher, p_chisq, ncol = 3, widths = c(2,2,1.25))
 ```
 
-GSEA will be used to generate dot plots of enriched/interesting gene signatures that differ between CD8+ T cells across the treatment groups. For GSEA, we need the information of all genes, Seurat is just too slow if we test all 20,000 genes, so presto is used to perform a fast Wilcoxon rank sum test. The fgsea() function requires a list of gene sets to check, and a named vector of gene-level statistics, where the names should be the same as the gene names in the pathways list. A currated list of gene signatures will be examined.
-```{r GSEA dot plots of enriched/interesting gene signatures}
+![](3_figure2_plots_files/figure-gfm/Fishers%20exact%20test%20of%20proportions%20of%20clusters-1.png)<!-- -->
+
+GSEA will be used to generate dot plots of enriched/interesting gene
+signatures that differ between CD8+ T cells across the treatment groups.
+For GSEA, we need the information of all genes, Seurat is just too slow
+if we test all 20,000 genes, so presto is used to perform a fast
+Wilcoxon rank sum test. The fgsea() function requires a list of gene
+sets to check, and a named vector of gene-level statistics, where the
+names should be the same as the gene names in the pathways list. A
+currated list of gene signatures will be examined.
+
+``` r
 Idents(seurat_integrated) <- seurat_integrated$celltype
 all_genes <- wilcoxauc(subset(seurat_integrated, idents = "CD8"), "seurat_clusters") #fast Wilcoxon rank sum test between treatment groups
 
@@ -604,23 +732,195 @@ m_df <- rbind(msigdbr(species = "Mus musculus", category = "C7", subcategory = "
               msigdbr(species = "Mus musculus", category = "C5"),
               msigdbr(species = "Mus musculus", category = "H")) #get database of gene signatures. Just using C7 IMMUNESIGDB
 head(m_df)
+```
 
+    ## # A tibble: 6 x 18
+    ##   gs_cat gs_subcat gs_name gene_symbol entrez_gene ensembl_gene human_gene_symb~
+    ##   <chr>  <chr>     <chr>   <chr>             <int> <chr>        <chr>           
+    ## 1 C7     IMMUNESI~ GOLDRA~ Abca2             11305 ENSMUSG0000~ ABCA2           
+    ## 2 C7     IMMUNESI~ GOLDRA~ Abcc5             27416 ENSMUSG0000~ ABCC5           
+    ## 3 C7     IMMUNESI~ GOLDRA~ Abhd14a           68644 ENSMUSG0000~ ABHD14A         
+    ## 4 C7     IMMUNESI~ GOLDRA~ Acadm             11364 ENSMUSG0000~ ACADM           
+    ## 5 C7     IMMUNESI~ GOLDRA~ Acp5              11433 ENSMUSG0000~ ACP5            
+    ## 6 C7     IMMUNESI~ GOLDRA~ Acp6              66659 ENSMUSG0000~ ACP6            
+    ## # ... with 11 more variables: human_entrez_gene <int>,
+    ## #   human_ensembl_gene <chr>, gs_id <chr>, gs_pmid <chr>, gs_geoid <chr>,
+    ## #   gs_exact_source <chr>, gs_url <chr>, gs_description <chr>, taxon_id <int>,
+    ## #   ortholog_sources <chr>, num_ortholog_sources <dbl>
+
+``` r
 fgsea_sets <- m_df %>% 
                 split(x = .$gene_symbol, f = .$gs_name) #split the database into a list
 corner(fgsea_sets)
+```
 
+    ## $ABBUD_LIF_SIGNALING_1_DN
+    ##  [1] "Ahnak"    "Alcam"    "Ankrd40"  "Arid1a"   "Bckdhb"   "AU021092"
+    ##  [7] "Capn9"    "Cd24a"    "Cyfip1"   "Dcaf11"   "Ddc"      "Efna2"   
+    ## [13] "Enpp2"    "Foxa2"    "Gria2"    "Hk2"      "Hoxc9"    "Itga6"   
+    ## [19] "Klrb1a"   "Lims1"    "Mtss2"    "Ostf1"    "Peli1"    "Rexo2"   
+    ## [25] "Steep1"   "Sucla2"   "Sytl4"    "Tspan7"  
+    ## 
+    ## $ABBUD_LIF_SIGNALING_1_UP
+    ##  [1] "Acaa2"    "Aldoc"    "Anxa8"    "Bcl3"     "Cebpb"    "Cxcl14"  
+    ##  [7] "Cyb561"   "Elf3"     "Fbp1"     "Fgg"      "Gpcpd1"   "Gpx3"    
+    ## [13] "Gramd3"   "Has1"     "Il1r1"    "Irf1"     "Klf10"    "Kng2"    
+    ## [19] "Lbp"      "Lcn2"     "Lrg1"     "Man1a"    "Mpo"      "Nmi"     
+    ## [25] "Psmb8"    "Ptpn1"    "Rasa3"    "Rgs4"     "Rhou"     "Ear6"    
+    ## [31] "Sct"      "Socs3"    "Sqor"     "St3gal1"  "Stat3"    "Tapbp"   
+    ## [37] "Tmem176a" "Tmem176b" "Tnfrsf1a" "Tspan4"   "Upp1"     "Vwf"     
+    ## [43] "Xbp1"    
+    ## 
+    ## $ABBUD_LIF_SIGNALING_2_DN
+    ## [1] "Cga"     "Cited2"  "Nalcn"   "Pitx2"   "Pthlh"   "Scn1a"   "Zfp280d"
+    ## [8] "Zfp280d"
+    ## 
+    ## $ABBUD_LIF_SIGNALING_2_UP
+    ##  [1] "Atp1b1"  "Col11a1" "Dab2"    "Dcn"     "Dio2"    "Ezr"     "Fgfr1"  
+    ##  [8] "Gpx2"    "Junb"    "Nrp1"    "Pfkp"    "Ppp2r2b" "Ptpro"  
+    ## 
+    ## $ABDELMOHSEN_ELAVL4_TARGETS
+    ##  [1] "Bcl2"     "Cab39"    "Casp3"    "Cdc42"    "Cdh2"     "Dlg4"    
+    ##  [7] "Eif2ak2"  "Itga1"    "Itgb1"    "Kcnq2"    "Kmt5a"    "Leprotl1"
+    ## [13] "Ncam1"    "Parp1"    "Rab10"    "Rhoa"
+
+``` r
 #add custom gene signatures into fgsea
 fgsea_sets$Miller2019_progenitor_exh <- read_excel("gene_signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Progenitor Exh.")$gene
 fgsea_sets$Miller2019_terminally_exh <- read_excel("gene_signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Terminally Exh.")$gene
 fgsea_sets$Miller2019_effector_like <- read_excel("gene_signatures/Miller2019_NatureImmuno_SuppTable1.xlsx",sheet = "Effector-like")$gene
 fgsea_sets$beura_trm <- convertHumanGeneList(read_excel("gene_signatures/20200711_Beura_Trm_2017_Immunity.xlsx", sheet = "Beura_FRT_TRM_UP",col_names = F)$`...1`)
+```
+
+    ## Loading required package: biomaRt
+
+    ## Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=version&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL
+
+    ##    V1
+    ## 1 0.7
+    ## BioMartServer running BioMart version: 0.7
+    ## Mart virtual schema: default
+    ## Mart host: https://dec2021.archive.ensembl.org:443/biomart/martservice
+
+    ## Checking attributes ...
+
+    ## Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=attributes&dataset=hsapiens_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+
+    ##  ok
+
+    ## Checking filters ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=filters&dataset=hsapiens_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=version&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL
+
+    ##    V1
+    ## 1 0.7
+    ## BioMartServer running BioMart version: 0.7
+    ## Mart virtual schema: default
+    ## Mart host: https://dec2021.archive.ensembl.org:443/biomart/martservice
+
+    ## Checking attributes ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=attributes&dataset=mmusculus_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Checking filters ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=filters&dataset=mmusculus_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## New names:
+
+    ## [1] "Ptger4" "Egr1"   "Atp8a2" "Klf9"   "Ckb"    "Gm6169"
+
+``` r
 fgsea_sets$nonbystander <- read_excel("gene_signatures/20200718_Mognol_PNAS2017_bystanders.xlsx", sheet = "OT-1 UP (TS)",col_names = F)$`...1`
+```
+
+    ## New names:
+    ## * `` -> `...1`
+
+``` r
 fgsea_sets$bystander <- read_excel("gene_signatures/20200718_Mognol_PNAS2017_bystanders.xlsx", sheet = "P14 UP (bystander)",col_names = F)$`...1`
+```
+
+    ## New names:
+    ## * `` -> `...1`
+
+``` r
 fgsea_sets$cd8_activation_sarkar <- convertHumanGeneList(read.table("gene_signatures/cd8_activation_sarkar_up.txt")$V1)
+```
+
+    ## Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=version&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL
+
+    ##    V1
+    ## 1 0.7
+    ## BioMartServer running BioMart version: 0.7
+    ## Mart virtual schema: default
+    ## Mart host: https://dec2021.archive.ensembl.org:443/biomart/martservice
+
+    ## Checking attributes ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=attributes&dataset=hsapiens_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Checking filters ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=filters&dataset=hsapiens_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=version&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL
+
+    ##    V1
+    ## 1 0.7
+    ## BioMartServer running BioMart version: 0.7
+    ## Mart virtual schema: default
+    ## Mart host: https://dec2021.archive.ensembl.org:443/biomart/martservice
+
+    ## Checking attributes ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=attributes&dataset=mmusculus_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Checking filters ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=filters&dataset=mmusculus_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+
+    ## [1] "Rrm2"    "Lgals3"  "Uhrf1"   "Gm10184" "Prdx4"   "Ccnb1"
+
+``` r
 fgsea_sets$cell_cycle <- convertHumanGeneList(read.table("gene_signatures/cell_cycle_all_strong.txt")$V1)
-fgsea_sets$hu_et_al <- read_excel("gene_signatures/CD8_exhausted_Hu.xlsx", col_names = "gene")$gene
-fgsea_sets$CD8_8_Zhakarov <- read_excel("gene_signatures/CD8_8_Zakharov.xlsx", col_names = "gene")$gene
-fgsea_sets$CD8_0_Zhakarov <- read_excel("gene_signatures/CD8_0_Zakharov.xlsx", col_names = "gene")$gene
+```
+
+    ## Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=version&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL
+
+    ##    V1
+    ## 1 0.7
+    ## BioMartServer running BioMart version: 0.7
+    ## Mart virtual schema: default
+    ## Mart host: https://dec2021.archive.ensembl.org:443/biomart/martservice
+
+    ## Checking attributes ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=attributes&dataset=hsapiens_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Checking filters ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=filters&dataset=hsapiens_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=version&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL
+
+    ##    V1
+    ## 1 0.7
+    ## BioMartServer running BioMart version: 0.7
+    ## Mart virtual schema: default
+    ## Mart host: https://dec2021.archive.ensembl.org:443/biomart/martservice
+
+    ## Checking attributes ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=attributes&dataset=mmusculus_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+    ## Checking filters ...Attempting web service request:
+    ## https://dec2021.archive.ensembl.org:443/biomart/martservice?type=filters&dataset=mmusculus_gene_ensembl&requestid=biomaRt&mart=ENSEMBL_MART_ENSEMBL&virtualSchema=default
+    ##  ok
+
+    ## [1] "Cbx5"   "Cdc25c" "Gtse1"  "Mcm4"   "Rrm2"   "Dlgap5"
+
+``` r
 lag3 <- read_excel("gene_signatures/stephanie_de_genes.xlsx") #these DE genes are from FindAllMarkers, so they will be parsed out into separate signatures
   fgsea_sets$lag3exh1 <- lag3 %>% filter(cluster == 1) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
   fgsea_sets$lag3progexh2 <- lag3 %>% filter(cluster == 2) %>% filter(p_val_adj<0.05 & avg_logFC > 0) %>% pull(gene)
@@ -657,7 +957,141 @@ for (current_treatment in unique(all_genes$group)) {
   
   df_fgsea <- rbind(df_fgsea, data.frame(fgsea_results[[current_treatment]], group = current_treatment))
 }
+```
 
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (9.81% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (4.69% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (9.44% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (11.2% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (7.18% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (7.62% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (7.42% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (6.66% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (9.46% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (7.84% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+    ## Warning in fgsea(fgsea_sets, nperm = 1000, stats = ranks[[current_treatment]]):
+    ## You are trying to run fgseaSimple. It is recommended to use fgseaMultilevel. To
+    ## run fgseaMultilevel, you need to remove the nperm argument in the fgsea function
+    ## call.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize, gseaParam, : There are ties in the preranked stats (7.38% of the list).
+    ## The order of those tied genes will be arbitrary, which may produce unexpected results.
+
+    ## Warning in preparePathwaysAndStats(pathways, stats, minSize, maxSize,
+    ## gseaParam, : All values in the stats vector are greater than zero and scoreType
+    ## is "std", maybe you should switch to scoreType = "pos".
+
+``` r
 #find the most interesting gene signatures
 signatures_of_interest <- c("GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_UP",
                             "GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_DN",
@@ -680,9 +1114,6 @@ signatures_of_interest <- c("GSE9650_EFFECTOR_VS_MEMORY_CD8_TCELL_UP",
                             "lag3eff7",
                             "lag3act4",
                             "lag3act6",
-                            "hu_et_al",
-                            "CD8_8_Zhakarov",
-                            "CD8_0_Zhakarov",
                             "GOBP_CELLULAR_RESPONSE_TO_INTERFERON_GAMMA",
          "REACTOME_INTERFERON_GAMMA_SIGNALING")
 
@@ -699,7 +1130,11 @@ a <- a[,-1]
 clust <- hclust(dist(as.matrix(a)))
 ggtree_plot <- ggtree::ggtree(as.dendrogram(clust))
 ggtree_plot
+```
 
+![](3_figure2_plots_files/figure-gfm/GSEA%20dot%20plots%20of%20enriched/interesting%20gene%20signatures-1.png)<!-- -->
+
+``` r
 dotplot <- df_fgsea %>% 
   filter(pathway %in% signatures_of_interest & padj < 0.05) %>% 
   mutate(pathway = factor(pathway, levels = clust$labels[clust$order])) %>%
@@ -720,8 +1155,11 @@ dotplot <- df_fgsea %>%
 plot_grid(ggtree_plot, dotplot, nrow = 1, rel_widths = c(0.3,2), align = 'h')
 ```
 
+![](3_figure2_plots_files/figure-gfm/GSEA%20dot%20plots%20of%20enriched/interesting%20gene%20signatures-2.png)<!-- -->
+
 Plot a bar chart of NRP-v7+ T cells per cluster
-```{r plot NRP-v7 staining}
+
+``` r
 p_tetramer_per_tissue <- seurat_integrated@meta.data %>%
                           filter(!grepl("Tcon|Treg", seurat_clusters)) %>%
                           ggplot(aes(x = tissue, #orders clusters properly
@@ -783,8 +1221,8 @@ p_tetramer_per_cluster_pan <- pan8@meta.data %>%
                             scale_fill_manual(values = custom_colors("tetramer")) +
                             coord_flip()
 grid.arrange(p_tetramer_per_cluster, p_tetramer_per_cluster_pan, ncol = 2)
-
-
 ```
 
-Morisitia's overlap index.
+![](3_figure2_plots_files/figure-gfm/plot%20NRP-v7%20staining-1.png)<!-- -->
+
+Morisitia’s overlap index.
